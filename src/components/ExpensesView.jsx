@@ -1,0 +1,412 @@
+import React, { useState } from 'react';
+import { formatSimple } from '../lib/CurrencyManager';
+import './ExpensesView.css';
+
+const CATEGORY_META = {
+  'বাজার': { icon: 'ph-shopping-cart', color: '#00b894', bg: 'rgba(0, 184, 148, 0.15)' },
+  'শপিং': { icon: 'ph-bag', color: '#e84393', bg: 'rgba(232, 67, 147, 0.15)' },
+  'খাবার': { icon: 'ph-pizza', color: '#e17055', bg: 'rgba(225, 112, 85, 0.15)' },
+  'বই': { icon: 'ph-book-open', color: '#0984e3', bg: 'rgba(9, 132, 227, 0.15)' },
+  'বিল': { icon: 'ph-lightning', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
+  'বিল ও ইউটিলিটি': { icon: 'ph-lightning', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
+  'যাতায়াত': { icon: 'ph-bus', color: '#6c5ce7', bg: 'rgba(108, 92, 231, 0.15)' },
+  'মেডিকেল': { icon: 'ph-first-aid', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
+  'স্বাস্থ্য / ঔষধ': { icon: 'ph-first-aid', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
+  'FOOD': { icon: 'ph-pizza', color: '#e17055', bg: 'rgba(225, 112, 85, 0.15)' },
+  'TRAVEL': { icon: 'ph-airplane-tilt', color: '#0984e3', bg: 'rgba(9, 132, 227, 0.15)' },
+  'GROCERIES': { icon: 'ph-shopping-cart', color: '#00b894', bg: 'rgba(0, 184, 148, 0.15)' },
+  'ENTERTAINMENT': { icon: 'ph-game-controller', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
+  'UTILITIES': { icon: 'ph-lightning', color: '#e84393', bg: 'rgba(232, 67, 147, 0.15)' },
+  'HEALTH': { icon: 'ph-heartbeat', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
+};
+
+function getCategoryMeta(catName = '') {
+  const normalized = String(catName).trim();
+  if (CATEGORY_META[normalized]) return CATEGORY_META[normalized];
+  for (const [key, val] of Object.entries(CATEGORY_META)) {
+    if (normalized.includes(key)) return val;
+  }
+  return { icon: 'ph-tag', color: '#a29bfe', bg: 'rgba(162, 155, 254, 0.15)' };
+}
+
+export default function ExpensesView({ 
+  activities = [], 
+  personalExpenses = [], 
+  onNewExpenseClick,
+  onDeleteExpense
+}) {
+  const [activeTab, setActiveTab] = useState('PERSONAL'); // 'PERSONAL' | 'GROUP'
+  const [groupFilter, setGroupFilter] = useState('ALL');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState(null);
+
+  // Group filter calculations
+  const filteredActivities = activities.filter(activity => {
+    if (groupFilter === 'ALL') return true;
+    if (groupFilter === 'EXPENSES') return activity.type === 'EXPENSE';
+    if (groupFilter === 'SETTLEMENTS') return activity.type === 'SETTLEMENT';
+    return true;
+  });
+
+  // Personal category aggregations
+  const categoryStats = personalExpenses.reduce((acc, exp) => {
+    const cat = exp.category || 'অন্যান্য';
+    if (!acc[cat]) {
+      acc[cat] = { total: 0, count: 0 };
+    }
+    acc[cat].total += exp.amount;
+    acc[cat].count += 1;
+    return acc;
+  }, {});
+
+  const totalPersonalSpent = personalExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Filtered personal expenses
+  const displayedPersonalExpenses = selectedCategoryFilter 
+    ? personalExpenses.filter(e => (e.category || 'অন্যান্য') === selectedCategoryFilter)
+    : personalExpenses;
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  return (
+    <div className="expenses-view glass-panel animate-fade-in">
+      {/* Top Header with Main Switcher */}
+      <div className="expenses-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="activity-icon" style={{ background: 'rgba(108, 92, 231, 0.15)', color: 'var(--accent-primary)', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <i className={activeTab === 'PERSONAL' ? "ph ph-wallet" : "ph ph-receipt"} style={{ fontSize: '1.4rem' }}></i>
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.4rem', margin: 0 }}>
+              {activeTab === 'PERSONAL' ? 'Personal Expenses (ব্যক্তিগত খরচ)' : 'Group Activity & Expenses'}
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '3px 0 0' }}>
+              {activeTab === 'PERSONAL' ? 'আপনার নিজের ব্যক্তিগত কেনাকাটা ও খরচের বিস্তারিত হিসাব' : 'গ্রুপের শেয়ার করা সব খরচ ও লেনদেন'}
+            </p>
+          </div>
+        </div>
+
+        <button className="btn-primary" onClick={() => onNewExpenseClick(activeTab)}>
+          <i className="ph ph-plus"></i>
+          {activeTab === 'PERSONAL' ? 'Add Personal Expense' : 'Add Group Expense'}
+        </button>
+      </div>
+
+      {/* Main Mode Toggle */}
+      <div className="toggle-group" style={{ maxWidth: '440px', margin: '0' }}>
+        <button 
+          type="button" 
+          className={`toggle-btn ${activeTab === 'PERSONAL' ? 'active' : ''}`}
+          onClick={() => setActiveTab('PERSONAL')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px' }}
+        >
+          <i className="ph ph-user"></i>
+          <span>Personal Expenses ({personalExpenses.length})</span>
+        </button>
+        <button 
+          type="button" 
+          className={`toggle-btn ${activeTab === 'GROUP' ? 'active' : ''}`}
+          onClick={() => setActiveTab('GROUP')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px' }}
+        >
+          <i className="ph ph-users-three"></i>
+          <span>Group Expenses ({activities.length})</span>
+        </button>
+      </div>
+
+      {/* ================= PERSONAL EXPENSES VIEW ================= */}
+      {activeTab === 'PERSONAL' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Summary Stat Card */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(108, 92, 231, 0.15) 0%, rgba(0, 184, 148, 0.1) 100%)', 
+            border: '1px solid rgba(108, 92, 231, 0.25)',
+            borderRadius: '16px',
+            padding: '20px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px'
+          }}>
+            <div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Total Personal Spending
+              </span>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
+                {formatSimple(totalPersonalSpent, 'BDT')}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Across {Object.keys(categoryStats).length} categories • {personalExpenses.length} records
+              </span>
+            </div>
+
+            {selectedCategoryFilter && (
+              <button 
+                className="btn-secondary"
+                onClick={() => setSelectedCategoryFilter(null)}
+                style={{ fontSize: '0.85rem', padding: '8px 14px', background: 'rgba(255,255,255,0.08)' }}
+              >
+                <i className="ph ph-x"></i> Clear Filter: "{selectedCategoryFilter}"
+              </button>
+            )}
+          </div>
+
+          {/* Category Cards Grid */}
+          <div>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px', color: 'var(--text-primary)' }}>
+              Categories (ক্যাটাগরি ভিত্তিক খরচ)
+            </h3>
+
+            {Object.keys(categoryStats).length > 0 ? (
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
+                gap: '12px' 
+              }}>
+                {Object.entries(categoryStats).map(([catName, stats]) => {
+                  const meta = getCategoryMeta(catName);
+                  const isSelected = selectedCategoryFilter === catName;
+                  return (
+                    <div 
+                      key={catName}
+                      onClick={() => setSelectedCategoryFilter(isSelected ? null : catName)}
+                      style={{
+                        background: isSelected ? `${meta.color}25` : 'var(--bg-tertiary)',
+                        border: isSelected ? `2px solid ${meta.color}` : '1px solid var(--glass-border)',
+                        borderRadius: '14px',
+                        padding: '16px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}
+                      title={`Click to filter by ${catName}`}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ 
+                          width: '38px', height: '38px', borderRadius: '10px', 
+                          background: meta.bg, color: meta.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                        }}>
+                          <i className={`ph ${meta.icon}`} style={{ fontSize: '1.25rem' }}></i>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: '6px' }}>
+                          {stats.count} {stats.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                          {catName}
+                        </div>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: meta.color, marginTop: '2px' }}>
+                          {formatSimple(stats.total, 'BDT')}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-item)', border: '1px solid var(--glass-border)', borderRadius: '12px', color: 'var(--text-muted)' }}>
+                ক্যাটাগরিভিত্তিক খরচ দেখতে আপনার প্রথম ব্যক্তিগত খরচ যোগ করুন (যেমন: বাজার, বই, শপিং)।
+              </div>
+            )}
+          </div>
+
+          {/* Personal Transactions List */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '1.05rem', margin: 0 }}>
+                {selectedCategoryFilter ? `"${selectedCategoryFilter}" খরচের তালিকা` : 'সকল ব্যক্তিগত খরচ'} ({displayedPersonalExpenses.length})
+              </h3>
+            </div>
+
+            {displayedPersonalExpenses.length === 0 ? (
+              <div className="empty-state" style={{ padding: '40px 16px' }}>
+                <i className="ph ph-shopping-bag" style={{ fontSize: '3rem', color: 'var(--text-muted)', marginBottom: '16px' }}></i>
+                <h3>No expenses found</h3>
+                <p>
+                  {selectedCategoryFilter 
+                    ? `No expenses found in "${selectedCategoryFilter}" category.` 
+                    : 'Start tracking your personal groceries, books, shopping, etc.'}
+                </p>
+                <button className="btn-primary" onClick={() => onNewExpenseClick('PERSONAL')} style={{ margin: '16px auto 0' }}>
+                  <i className="ph ph-plus"></i> Add Personal Expense
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {displayedPersonalExpenses.map(item => {
+                  const meta = getCategoryMeta(item.category);
+                  return (
+                    <div 
+                      key={item.id}
+                      className="glass-panel"
+                      style={{
+                        padding: '16px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                        borderRadius: '12px',
+                        background: 'var(--bg-tertiary)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          width: '42px', height: '42px', borderRadius: '10px',
+                          background: meta.bg, color: meta.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <i className={`ph ${meta.icon}`} style={{ fontSize: '1.3rem' }}></i>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ margin: '0 0 2px 0', fontSize: '1rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {item.title}
+                          </h4>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ 
+                              fontSize: '0.72rem', 
+                              fontWeight: 600, 
+                              color: meta.color,
+                              background: meta.bg,
+                              padding: '2px 6px',
+                              borderRadius: '4px'
+                            }}>
+                              {item.category || 'অন্যান্য'}
+                            </span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>•</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              {formatDate(item.date)}
+                            </span>
+                            {item.notes && (
+                              <>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>•</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                  {item.notes}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {formatSimple(item.amount, 'BDT')}
+                        </div>
+                        {onDeleteExpense && (
+                          <button 
+                            className="btn-icon"
+                            onClick={() => {
+                              if (window.confirm(`Delete "${item.title}"?`)) {
+                                onDeleteExpense(item.id);
+                              }
+                            }}
+                            title="Delete expense"
+                            style={{ width: '32px', height: '32px', color: 'var(--text-muted)' }}
+                          >
+                            <i className="ph ph-trash"></i>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= GROUP ACTIVITY VIEW ================= */}
+      {activeTab === 'GROUP' && (
+        <>
+          <div className="expenses-filters">
+            <button 
+              className={`filter-chip ${groupFilter === 'ALL' ? 'active' : ''}`}
+              onClick={() => setGroupFilter('ALL')}
+            >
+              All Activity
+            </button>
+            <button 
+              className={`filter-chip ${groupFilter === 'EXPENSES' ? 'active' : ''}`}
+              onClick={() => setGroupFilter('EXPENSES')}
+            >
+              Expenses Only
+            </button>
+            <button 
+              className={`filter-chip ${groupFilter === 'SETTLEMENTS' ? 'active' : ''}`}
+              onClick={() => setGroupFilter('SETTLEMENTS')}
+            >
+              Settlements
+            </button>
+          </div>
+
+          {filteredActivities.length === 0 ? (
+            <div className="empty-state">
+              <i className="ph ph-receipt" style={{ fontSize: '3rem', color: 'var(--text-muted)', marginBottom: '16px' }}></i>
+              <h3>No group activity yet</h3>
+              <p>Group expenses and settlements will appear here.</p>
+              <button className="btn-primary" onClick={() => onNewExpenseClick('GROUP')} style={{ margin: '16px auto 0' }}>
+                <i className="ph ph-plus"></i> Add Group Expense
+              </button>
+            </div>
+          ) : (
+            <div className="timeline-container">
+              {filteredActivities.map((activity, index) => {
+                const isLast = index === filteredActivities.length - 1;
+                const isExpense = activity.type === 'EXPENSE';
+                const data = activity.data;
+                
+                const iconClass = isExpense ? "ph ph-receipt" : "ph ph-handshake";
+                const iconColor = isExpense ? "var(--warning)" : "var(--success)";
+                const iconBg = isExpense ? "rgba(253, 203, 110, 0.15)" : "rgba(0, 184, 148, 0.15)";
+                
+                const title = isExpense ? data.title : `${data.payerName} paid ${data.payeeName}`;
+                const groupName = isExpense ? (data.groupName || "Group Expense") : "Settlement";
+
+                return (
+                  <div className="timeline-item" key={index}>
+                    {!isLast && <div className="timeline-line"></div>}
+                    
+                    <div className="timeline-dot" style={{ backgroundColor: iconBg, color: iconColor }}>
+                      <i className={iconClass}></i>
+                    </div>
+                    
+                    <div className="timeline-content">
+                      <div className="timeline-details">
+                        <h4>{title}</h4>
+                        <div className="timeline-meta">
+                          <span>{groupName}</span>
+                          <span className="dot-separator">•</span>
+                          <span>{formatDate(activity.date)}</span>
+                          {isExpense && (
+                            <>
+                              <span className="dot-separator">•</span>
+                              <span>Paid by {data.payerName}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="timeline-amount" style={{ color: isExpense ? 'var(--text-primary)' : 'var(--success)' }}>
+                        {formatSimple(data.amount, 'BDT')}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
