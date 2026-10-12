@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { LocalDatabase } from './store/db'
 import { calculateBalances, simplifyDebts, getTotalGroupBalance } from './lib/BalanceCalculator'
 import DashboardView from './components/DashboardView'
@@ -30,6 +30,8 @@ import { formatSimple, formatCompact } from './lib/CurrencyManager'
 
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isSettingsPage = location.pathname === '/settings';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [data, setData] = useState({
@@ -54,6 +56,11 @@ function App() {
   // Theme state
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('splitup_theme') || 'dark';
+  });
+
+  // Currency state
+  const [currencyCode, setCurrencyCode] = useState(() => {
+    return localStorage.getItem('splitup_currency') || 'BDT';
   });
 
   useEffect(() => {
@@ -227,11 +234,11 @@ function App() {
   if (!data.currentUser) return null; // loading
 
   const formatCurrency = (amount) => {
-    return formatSimple(amount, 'BDT');
+    return formatSimple(amount, currencyCode);
   }
 
   const formatCurrencyCompact = (amount) => {
-    return formatCompact(amount, 'BDT');
+    return formatCompact(amount, currencyCode);
   }
 
   const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups } = data;
@@ -296,6 +303,13 @@ function App() {
             <i className="ph ph-chart-pie-slice"></i>
             <span>Analytics</span>
           </NavLink>
+          <NavLink 
+            to="/settings" 
+            className={({ isActive }) => `nav-item animate-fade-in delay-5 ${isActive ? 'active' : ''}`}
+          >
+            <i className="ph ph-gear"></i>
+            <span>Settings</span>
+          </NavLink>
         </nav>
 
         <NavLink 
@@ -322,24 +336,37 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        <header className="header animate-fade-in">
-          <div className="header-title">
-            <h2>Welcome back, {currentUser.name?.split(' ')[0]} 👋</h2>
-            <p>Track your shared expenses & personal wallet.</p>
-          </div>
-          <div className="header-actions">
-            <button className="btn-icon" onClick={toggleTheme} title="Toggle Theme">
-              {theme === 'dark' ? <i className="ph ph-sun"></i> : <i className="ph ph-moon"></i>}
-            </button>
-            <button className="btn-icon" onClick={() => alert("No new notifications at this moment!")} title="Notifications">
-              <i className="ph ph-bell"></i>
-            </button>
-            <button className="btn-primary" onClick={() => openExpenseModal('PERSONAL')}>
-              <i className="ph ph-plus"></i>
-              New Expense
-            </button>
-          </div>
-        </header>
+        {!isSettingsPage && (
+          <header className="header animate-fade-in">
+            <div className="header-title">
+              <h2>Welcome back, {currentUser.name?.split(' ')[0]} 👋</h2>
+              <p>Track your shared expenses & personal wallet.</p>
+            </div>
+            <div className="header-actions">
+              <NavLink to="/settings" className="header-user-btn" title="View Profile & Settings">
+                <div className="header-avatar-circle">
+                  {currentUser.avatar ? (
+                    <img src={currentUser.avatar} alt={currentUser.name} />
+                  ) : (
+                    <span>{currentUser.name?.substring(0, 2).toUpperCase() || 'US'}</span>
+                  )}
+                  <span className="header-online-status"></span>
+                </div>
+                <span className="header-username">{currentUser.name?.split(' ')[0]}</span>
+              </NavLink>
+              <button className="btn-icon" onClick={toggleTheme} title="Toggle Theme">
+                {theme === 'dark' ? <i className="ph ph-sun"></i> : <i className="ph ph-moon"></i>}
+              </button>
+              <button className="btn-icon" onClick={() => alert("No new notifications at this moment!")} title="Notifications">
+                <i className="ph ph-bell"></i>
+              </button>
+              <button className="btn-primary" onClick={() => openExpenseModal('PERSONAL')}>
+                <i className="ph ph-plus"></i>
+                <span>New Expense</span>
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Routes View */}
         <Routes>
@@ -389,7 +416,10 @@ function App() {
             <SettingsView 
               currentUser={currentUser} 
               theme={theme} 
-              toggleTheme={toggleTheme} 
+              setTheme={setTheme} 
+              currencyCode={currencyCode}
+              setCurrencyCode={setCurrencyCode}
+              onRefreshData={loadData}
               onResetData={() => {
                 if (window.confirm("Are you sure you want to reset all test data? This cannot be undone.")) {
                   LocalDatabase.clearData();

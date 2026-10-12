@@ -611,3 +611,154 @@ export async function tursoGoogleSignIn(credentialToken) {
   return user;
 }
 
+// ----------------- Profile & Data Backup/Restore -----------------
+
+export async function tursoUpdateUserProfile(userId, { name, shortProfile }) {
+  if (!tursoClient) {
+    // Offline / local fallback
+    const current = tursoGetCurrentUser() || {};
+    const updated = {
+      ...current,
+      name: (name || current.name || '').trim(),
+      shortProfile: (shortProfile || '').trim()
+    };
+    localStorage.setItem('splitup_turso_user', JSON.stringify(updated));
+    return updated;
+  }
+
+  await initTursoTables();
+  const trimmedName = (name || '').trim();
+  const trimmedProfile = (shortProfile || '').trim();
+
+  await tursoClient.execute({
+    sql: 'UPDATE users SET name = ?, shortProfile = ? WHERE id = ?;',
+    args: [trimmedName, trimmedProfile, String(userId)]
+  });
+
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE members SET name = ? WHERE userId = ? OR id = ?;',
+      args: [trimmedName, String(userId), String(userId)]
+    });
+  } catch (_) {}
+
+  const current = tursoGetCurrentUser() || {};
+  const updated = {
+    ...current,
+    name: trimmedName || current.name,
+    shortProfile: trimmedProfile
+  };
+  localStorage.setItem('splitup_turso_user', JSON.stringify(updated));
+  return updated;
+}
+
+export async function tursoExportAllData(userId) {
+  if (!tursoClient) {
+    return {
+      version: "2.3.20",
+      exportedAt: new Date().toISOString(),
+      source: "local",
+      data: {}
+    };
+  }
+
+  await initTursoTables();
+  const [groups, members, expenses, settlements] = await Promise.all([
+    tursoClient.execute('SELECT * FROM groups;'),
+    tursoClient.execute('SELECT * FROM members;'),
+    tursoClient.execute('SELECT * FROM expenses;'),
+    tursoClient.execute('SELECT * FROM settlements;')
+  ]);
+
+  return {
+    version: "2.3.20",
+    exportedAt: new Date().toISOString(),
+    source: "SplitUP Turso Cloud",
+    userId,
+    groups: groups.rows,
+    members: members.rows,
+    expenses: expenses.rows,
+    settlements: settlements.rows
+  };
+}
+
+export async function tursoRestoreData(backupData, currentUserId) {
+  if (!tursoClient) throw new Error("Turso database is not connected.");
+  await initTursoTables();
+
+  if (!backupData || (!backupData.groups && !backupData.expenses)) {
+    throw new Error("Invalid backup file format. Missing groups or expenses.");
+  }
+
+  const statements = [];
+
+  // Restore Groups
+  if (Array.isArray(backupData.groups)) {
+    for (const g of backupData.groups) {
+      statements.push({
+        sql: 'INSERT OR REPLACE INTO groups (id, name, createdBy, joinCode, createdAt) VALUES (?, ?, ?, ?, ?);',
+        args: [String(g.id), String(g.name), g.createdBy ? String(g.createdBy) : null, g.joinCode ? String(g.joinCode) : null, Number(g.createdAt || Date.now())]
+      });
+    }
+  }
+
+  // Restore Members
+  if (Array.isArray(backupData.members)) {
+    for (const m of backupData.members) {
+      statements.push({
+        sql: 'INSERT OR REPLACE INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
+        args: [String(m.id), String(m.name), m.email ? String(m.email) : null, String(m.groupId), m.userId ? String(m.userId) : null]
+      });
+    }
+  }
+
+  // Restore Expenses
+  if (Array.isArray(backupData.expenses)) {
+    for (const e of backupData.expenses) {
+      statements.push({
+        sql: `INSERT OR REPLACE INTO expenses (id, groupId, userId, isPersonal, title, amount, paidBy, paidByMemberId, date, category, currencyCode, notes, participants) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        args: [
+          String(e.id),
+          String(e.groupId || '1'),
+          e.userId ? String(e.userId) : null,
+          e.isPersonal ? Number(e.isPersonal) : 0,
+          String(e.title || 'Expense'),
+          Number(e.amount || 0),
+          String(e.paidBy || 'Member'),
+          e.paidByMemberId ? String(e.paidByMemberId) : null,
+          Number(e.date || Date.now()),
+          e.category ? String(e.category) : 'General',
+          e.currencyCode ? String(e.currencyCode) : 'BDT',
+          e.notes ? String(e.notes) : null,
+          typeof e.participants === 'string' ? e.participants : JSON.stringify(e.participants || [])
+        ]
+      });
+    }
+  }
+
+  // Restore Settlements
+  if (Array.isArray(backupData.settlements)) {
+    for (const s of backupData.settlements) {
+      statements.push({
+        sql: 'INSERT OR REPLACE INTO settlements (id, groupId, paidBy, paidTo, amount, date, paymentMethod) VALUES (?, ?, ?, ?, ?, ?, ?);',
+        args: [
+          String(s.id),
+          String(s.groupId || '1'),
+          String(s.paidBy),
+          String(s.paidTo),
+          Number(s.amount || 0),
+          Number(s.date || Date.now()),
+          String(s.paymentMethod || 'CASH')
+        ]
+      });
+    }
+  }
+
+  if (statements.length > 0) {
+    // Execute batch
+    await tursoClient.batch(statements);
+  }
+
+  return { success: true, count: statements.length };
+}
