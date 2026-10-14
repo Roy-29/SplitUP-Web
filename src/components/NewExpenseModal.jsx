@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LocalDatabase } from '../store/db';
 import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense } from '../lib/turso';
+import CustomSelect from './CustomSelect';
 import './Modal.css';
 
 const PERSONAL_CATEGORIES = [
@@ -259,26 +260,24 @@ export default function NewExpenseModal({
             <div className="form-group">
               <label>Select Group</label>
               {groups.length > 0 ? (
-                <div className="select-wrapper">
-                  <select 
-                    value={selectedGroupId}
-                    onChange={e => {
-                      const newGid = e.target.value;
-                      setSelectedGroupId(newGid);
-                      const groupMems = members.filter(m => String(m.groupId) === String(newGid));
-                      setForm(prev => ({
-                        ...prev,
-                        selectedMembers: new Set(groupMems.map(m => m.id)),
-                        selectedPayerId: groupMems[0]?.id || currentUser?.id
-                      }));
-                    }}
-                  >
-                    {groups.map(g => (
-                      <option key={g.id} value={g.id}>👥 {g.name}</option>
-                    ))}
-                  </select>
-                  <i className="ph ph-caret-down select-arrow"></i>
-                </div>
+                <CustomSelect 
+                  value={selectedGroupId}
+                  onChange={newGid => {
+                    setSelectedGroupId(newGid);
+                    const groupMems = members.filter(m => String(m.groupId) === String(newGid));
+                    setForm(prev => ({
+                      ...prev,
+                      selectedMembers: new Set(groupMems.map(m => m.id)),
+                      selectedPayerId: groupMems[0]?.id || currentUser?.id
+                    }));
+                  }}
+                  options={groups.map(g => ({
+                    value: g.id,
+                    label: g.name,
+                    icon: 'ph-users-three'
+                  }))}
+                  placeholder="Select a group"
+                />
               ) : (
                 <div style={{ background: 'rgba(253, 203, 110, 0.1)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--warning)' }}>
                   <i className="ph ph-info" style={{ marginRight: '6px' }}></i>
@@ -322,24 +321,23 @@ export default function NewExpenseModal({
                 required
               />
             </div>
-                       {expenseType === 'GROUP' ? (
+            {expenseType === 'GROUP' ? (
               <div className="form-group">
                 <label>Category (Optional)</label>
-                <div className="select-wrapper">
-                  <select 
-                    value={form.selectedCategory}
-                    onChange={e => setForm({...form, selectedCategory: e.target.value})}
-                  >
-                    <option value="">General / Other (Optional)</option>
-                    <option value="FOOD">🍽️ Food & Dining</option>
-                    <option value="TRAVEL">✈️ Travel & Transport</option>
-                    <option value="GROCERIES">🛒 Groceries</option>
-                    <option value="ENTERTAINMENT">🎮 Entertainment</option>
-                    <option value="UTILITIES">⚡ Utilities & Bills</option>
-                    <option value="OTHER">🏷️ Other</option>
-                  </select>
-                  <i className="ph ph-caret-down select-arrow"></i>
-                </div>
+                <CustomSelect 
+                  value={form.selectedCategory}
+                  onChange={val => setForm(prev => ({ ...prev, selectedCategory: val }))}
+                  options={[
+                    { value: '', label: 'General / Other', icon: 'ph-tag' },
+                    { value: 'FOOD', label: 'Food & Dining', icon: '🍽️' },
+                    { value: 'TRAVEL', label: 'Travel & Transport', icon: '✈️' },
+                    { value: 'GROCERIES', label: 'Groceries / Bazar', icon: '🛒' },
+                    { value: 'ENTERTAINMENT', label: 'Entertainment', icon: '🎮' },
+                    { value: 'UTILITIES', label: 'Utilities & Rent', icon: '⚡' },
+                    { value: 'OTHER', label: 'Other', icon: '🏷️' }
+                  ]}
+                  placeholder="General / Other"
+                />
               </div>
             ) : null}
           </div>
@@ -408,19 +406,16 @@ export default function NewExpenseModal({
             <>
               <div className="form-group">
                 <label>Paid by</label>
-                <div className="select-wrapper">
-                  <select 
-                    value={form.selectedPayerId}
-                    onChange={e => setForm({...form, selectedPayerId: e.target.value})}
-                  >
-                    {displayMembers.map(m => (
-                      <option key={m.id} value={m.id}>
-                        👤 {m.name} {m.id === currentUser?.id ? '(You)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <i className="ph ph-caret-down select-arrow"></i>
-                </div>
+                <CustomSelect 
+                  value={form.selectedPayerId}
+                  onChange={val => setForm(prev => ({ ...prev, selectedPayerId: val }))}
+                  options={displayMembers.map(m => ({
+                    value: m.id,
+                    label: `${m.name} ${m.id === currentUser?.id ? '(You)' : ''}`,
+                    icon: 'ph-user'
+                  }))}
+                  placeholder="Select who paid"
+                />
               </div>
 
               <div className="split-options">

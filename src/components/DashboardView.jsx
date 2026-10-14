@@ -104,19 +104,22 @@ export default function DashboardView({
                   let amountClass = '';
                   let relationText = '';
 
+                  const trxTag = s.trxId ? ` • Trx: ${s.trxId}` : '';
+                  const methodStr = `Via ${s.paymentMethod || 'Cash'}${trxTag} • ${new Date(s.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}`;
+
                   if (iPaid) {
                     title = `You paid ${s.payeeName}`;
-                    subtitle = `Via ${s.paymentMethod || 'Cash'} • ${new Date(s.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}`;
+                    subtitle = methodStr;
                     amountClass = 'amount-positive';
                     relationText = 'Settled';
                   } else if (iReceived) {
                     title = `${s.payerName} paid you`;
-                    subtitle = `Via ${s.paymentMethod || 'Cash'} • ${new Date(s.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}`;
+                    subtitle = methodStr;
                     amountClass = 'amount-negative';
                     relationText = 'Received';
                   } else {
                     title = `${s.payerName} paid ${s.payeeName}`;
-                    subtitle = `Via ${s.paymentMethod || 'Cash'} • ${new Date(s.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}`;
+                    subtitle = methodStr;
                     relationText = 'Not involved';
                   }
 

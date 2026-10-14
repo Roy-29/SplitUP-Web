@@ -440,10 +440,15 @@ export default function ExpensesView({
                           <span>{groupName}</span>
                           <span className="dot-separator">•</span>
                           <span>{formatDate(activity.date)}</span>
-                          {isExpense && (
+                          {isExpense ? (
                             <>
                               <span className="dot-separator">•</span>
                               <span>Paid by {data.payerName}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="dot-separator">•</span>
+                              <span>Via {data.paymentMethod || 'Cash'}{data.trxId ? ` (${data.trxId})` : ''}</span>
                             </>
                           )}
                         </div>

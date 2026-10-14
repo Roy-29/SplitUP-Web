@@ -409,23 +409,40 @@ function App() {
       <main className="main-content">
         {!isSettingsPage && (
           <header className="header animate-fade-in">
+            {/* Mobile Brand Badge (Top-Left on Mobile) */}
+            <NavLink 
+              to="/dashboard" 
+              className="mobile-header-brand"
+              title="SplitUP - Turso Cloud"
+            >
+              <div className="mobile-header-brand-icon">
+                <i className="ph ph-intersect"></i>
+              </div>
+              <div className="mobile-header-brand-info">
+                <span className="mobile-header-brand-name">SplitUP</span>
+                <span className="mobile-header-brand-status">
+                  <span 
+                    className="status-dot-pulse"
+                    style={{ backgroundColor: isTursoConfigured ? 'var(--success)' : '#e17055' }}
+                  ></span>
+                  {isTursoConfigured ? 'Turso Cloud' : 'Turso Setup'}
+                </span>
+              </div>
+            </NavLink>
+
             <div className="header-title">
               <h2>Welcome back, {currentUser.name?.split(' ')[0]} 👋</h2>
               <p>Track your shared expenses & personal wallet.</p>
             </div>
+
             <div className="header-actions">
-              <NavLink to="/settings" className="header-user-btn" title="View Profile & Settings">
-                <div className="header-avatar-circle">
-                  <UserAvatar user={currentUser} size={32} showOnline={true} />
-                </div>
-                <span className="header-username">{currentUser.name?.split(' ')[0]}</span>
-              </NavLink>
-              <button className="btn-icon" onClick={toggleTheme} title="Toggle Theme">
-                {theme === 'dark' ? <i className="ph ph-sun"></i> : <i className="ph ph-moon"></i>}
-              </button>
-              
-              {/* Notification Popover Dropdown */}
-              <div className="notification-wrapper" ref={notificationRef}>
+              <div className="header-icons">
+                <button className="btn-icon" onClick={toggleTheme} title="Toggle Theme">
+                  {theme === 'dark' ? <i className="ph ph-sun"></i> : <i className="ph ph-moon"></i>}
+                </button>
+                
+                {/* Notification Popover Dropdown */}
+                <div className="notification-wrapper" ref={notificationRef}>
                 <button 
                   type="button"
                   id="notification-trigger-btn"
@@ -550,12 +567,13 @@ function App() {
                   </div>
                 )}
               </div>
-
-              <button className="btn-primary" onClick={() => openExpenseModal('PERSONAL')}>
-                <i className="ph ph-plus"></i>
-                <span>New Expense</span>
-              </button>
             </div>
+
+            <button className="btn-primary header-new-expense" onClick={() => openExpenseModal('PERSONAL')}>
+              <i className="ph ph-plus"></i>
+              <span>New Expense</span>
+            </button>
+          </div>
           </header>
         )}
 
@@ -694,6 +712,8 @@ function App() {
         currentGroupId={currentActiveGroupId}
         currentUser={currentUser}
         suggestedDebts={myDebts}
+        currencyCode={currencyCode}
+        members={data.members}
       />
 
       <NewGroupModal
