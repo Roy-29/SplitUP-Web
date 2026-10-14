@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { 
   tursoSignOut, 
@@ -246,7 +247,8 @@ export default function SettingsView({
   );
 
   return (
-    <div className="settings-container animate-fade-in">
+    <>
+      <div className="settings-container animate-fade-in">
       {/* Toast */}
       {toast && (
         <div className={`settings-toast ${toast.type}`}>
@@ -558,10 +560,12 @@ export default function SettingsView({
       <div className="settings-footer">
         <p>Made with ❤️ by SplitUP Team</p>
       </div>
+    </div>
 
-      {/* ================= MODALS ================= */}
-
-      {/* 1. Currency Selector Modal */}
+    {/* ================= MODALS (Rendered via Portal to body) ================= */}
+    {activeModal && createPortal(
+      <>
+        {/* 1. Currency Selector Modal */}
       {activeModal === 'currency' && (
         <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
           <div className="settings-modal-sheet" onClick={(e) => e.stopPropagation()}>
@@ -1036,7 +1040,7 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
               <p>You can export and download your complete dataset at any time from the Data section in Settings.</p>
             </div>
 
-            <div className="form-actions" style={{ marginTop: '20px' }}>
+            <div className="form-actions" style={{ padding: '0 24px 20px', marginTop: '16px' }}>
               <button className="btn-primary" onClick={() => setActiveModal(null)} style={{ width: '100%', justifyContent: 'center' }}>
                 I Understand
               </button>
@@ -1093,7 +1097,7 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
               </p>
             </div>
 
-            <div className="form-actions" style={{ marginTop: '20px' }}>
+            <div className="form-actions" style={{ padding: '0 24px 20px', marginTop: '16px' }}>
               <button className="btn-primary" onClick={() => setActiveModal(null)} style={{ width: '100%', justifyContent: 'center' }}>
                 Close
               </button>
@@ -1101,6 +1105,9 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
           </div>
         </div>
       )}
-    </div>
+      </>,
+      document.body
+    )}
+    </>
   );
 }

@@ -367,8 +367,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 16px;
+  z-index: 99999;
+  padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: fadeInModal 0.2s ease-out;
 }
 
@@ -384,10 +386,12 @@
   border-radius: 24px;
   width: 100%;
   max-width: 500px;
-  max-height: 85vh;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  margin: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   overflow: hidden;
   animation: popModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -404,6 +408,7 @@
   justify-content: space-between;
   padding: 20px 24px;
   border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
 }
 
 .modal-sheet-header h3,
@@ -440,6 +445,7 @@
   padding: 12px 18px;
   border-bottom: 1px solid var(--glass-border);
   background: var(--bg-primary);
+  flex-shrink: 0;
 }
 
 .currency-search-bar input {
@@ -460,6 +466,7 @@
 
 .currency-list {
   overflow-y: auto;
+  flex: 1;
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
@@ -514,6 +521,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .theme-option {
@@ -572,6 +581,8 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .modal-alert {
@@ -637,6 +648,8 @@
 /* Restore & File picker */
 .restore-modal-body {
   padding: 24px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .file-select-box {
@@ -665,7 +678,7 @@
 .version-content {
   padding: 24px;
   overflow-y: auto;
-  max-height: 60vh;
+  flex: 1;
 }
 
 .legal-content h4 {
@@ -760,6 +773,7 @@
   .settings-modal-sheet,
   .settings-modal-dialog {
     max-width: 100% !important;
+    margin: 0 !important;
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
     border-top-left-radius: 24px !important;
