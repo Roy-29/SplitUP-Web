@@ -83,7 +83,7 @@ export default function DashboardView({
       {/* Content Area */}
       <div className="content-grid">
         {/* Left Column: Recent Activity */}
-        <div className="glass-panel animate-fade-in delay-3" style={{ padding: '24px' }}>
+        <div className="glass-panel animate-fade-in delay-3 dashboard-activity-panel" style={{ padding: '24px' }}>
           <div className="section-title">
             <h3>Recent Expenses & Activity</h3>
             <Link to="/expenses" className="view-all" style={{ textDecoration: 'none' }}>
@@ -231,8 +231,8 @@ export default function DashboardView({
         </div>
 
         {/* Right Column: Actions & Groups */}
-        <div className="glass-panel animate-fade-in delay-4" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div>
+        <div className="dashboard-side-panel animate-fade-in delay-4">
+          <div className="glass-panel dashboard-quick-actions-card" style={{ padding: '24px' }}>
             <div className="section-title">
               <h3>Quick Actions</h3>
             </div>
@@ -256,7 +256,7 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div>
+          <div className="glass-panel dashboard-groups-card" style={{ padding: '24px' }}>
             <div className="section-title">
               <h3>Your Groups</h3>
               <Link to="/groups" className="view-all" style={{ textDecoration: 'none' }}>
@@ -293,7 +293,7 @@ export default function DashboardView({
             )}
           </div>
 
-          <div>
+          <div className="glass-panel dashboard-suggestions-card" style={{ padding: '24px' }}>
             <div className="section-title">
               <h3>Smart Suggestions</h3>
             </div>

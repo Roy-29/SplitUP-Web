@@ -39,6 +39,7 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
     >
       {/* Avatar Box */}
       <div 
+        className="group-avatar-box"
         style={{
           width: '60px',
           height: '60px',
@@ -140,7 +141,7 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
       </div>
 
       {/* Amount Column */}
-      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+      <div className="group-amount-box" style={{ textAlign: 'right', flexShrink: 0 }}>
         <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--accent-primary)' }}>
           {formatSimple(group.totalExpense || 0, currencyCode)}
         </div>

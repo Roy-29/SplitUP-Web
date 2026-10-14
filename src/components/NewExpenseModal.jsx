@@ -346,32 +346,22 @@ export default function NewExpenseModal({
           {expenseType === 'PERSONAL' && (
             <div className="form-group">
               <label>Category (Optional)</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '4px' }}>
+              <div className="personal-category-grid">
                 {PERSONAL_CATEGORIES.map(cat => {
                   const isSelected = form.personalCategory === cat.id;
                   return (
                     <button
                       type="button"
                       key={cat.id}
+                      className={`personal-category-btn ${isSelected ? 'selected' : ''}`}
                       onClick={() => setForm({ ...form, personalCategory: isSelected ? '' : cat.id })}
                       style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: '10px 4px',
-                        borderRadius: '10px',
-                        border: isSelected ? `2px solid ${cat.color}` : '1px solid var(--glass-border)',
-                        background: isSelected ? `${cat.color}20` : 'var(--bg-tertiary)',
-                        color: isSelected ? cat.color : 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                        fontWeight: isSelected ? 600 : 500,
-                        transition: 'all 0.2s ease'
+                        borderColor: isSelected ? cat.color : undefined,
+                        background: isSelected ? `${cat.color}20` : undefined,
+                        color: isSelected ? cat.color : undefined
                       }}
                     >
-                      <i className={`ph ${cat.icon}`} style={{ fontSize: '1.25rem' }}></i>
+                      <i className={`ph ${cat.icon}`}></i>
                       <span>{cat.name}</span>
                     </button>
                   );

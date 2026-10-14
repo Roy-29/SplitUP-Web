@@ -740,7 +740,7 @@
 /* Mobile Responsive */
 @media (max-width: 600px) {
   .settings-container {
-    padding: 12px 14px 110px;
+    padding: 12px 14px calc(100px + env(safe-area-inset-bottom, 20px));
     gap: 20px;
   }
 
@@ -750,5 +750,22 @@
 
   .sign-out-btn {
     margin-left: auto;
+  }
+
+  .settings-modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .settings-modal-sheet,
+  .settings-modal-dialog {
+    max-width: 100% !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-top-left-radius: 24px !important;
+    border-top-right-radius: 24px !important;
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 16px));
   }
 }

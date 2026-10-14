@@ -59,6 +59,7 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const isSettingsPage = location.pathname === '/settings';
+  const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [data, setData] = useState({
@@ -317,6 +318,23 @@ function App() {
   const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups, totalOwed, totalToReceive } = data;
   const currentActiveGroupId = groups.length > 0 ? groups[0].id : '1';
 
+  const getHeaderInfo = () => {
+    if (location.pathname === '/groups') {
+      return { title: 'Groups & Circles 👥', subtitle: 'Manage shared groups, invite friends, and split bills' };
+    }
+    if (location.pathname === '/expenses') {
+      return { title: 'Expenses & Ledger 💳', subtitle: 'Track your personal wallet, group bills, and settlements' };
+    }
+    if (location.pathname === '/analytics') {
+      return { title: 'Spending Analytics 📊', subtitle: 'Visual insights, category breakdown, and spending habits' };
+    }
+    return { 
+      title: `Welcome back, ${currentUser.name?.split(' ')[0]} 👋`, 
+      subtitle: 'Track your shared expenses & personal wallet.' 
+    };
+  };
+  const headerInfo = getHeaderInfo();
+
   return (
     <div className="app-container">
       {/* Sidebar */}
@@ -408,7 +426,7 @@ function App() {
       {/* Main Content */}
       <main className="main-content">
         {!isSettingsPage && (
-          <header className="header animate-fade-in">
+          <header className={`header animate-fade-in ${isDashboard ? 'header-dashboard' : 'header-subpage'}`}>
             {/* Mobile Brand Badge (Top-Left on Mobile) */}
             <NavLink 
               to="/dashboard" 
@@ -431,8 +449,8 @@ function App() {
             </NavLink>
 
             <div className="header-title">
-              <h2>Welcome back, {currentUser.name?.split(' ')[0]} 👋</h2>
-              <p>Track your shared expenses & personal wallet.</p>
+              <h2>{headerInfo.title}</h2>
+              <p>{headerInfo.subtitle}</p>
             </div>
 
             <div className="header-actions">

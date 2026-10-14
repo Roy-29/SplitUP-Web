@@ -127,6 +127,6 @@
 
 @media (max-width: 600px) {
   .expenses-view {
-    padding: 20px 16px;
+    padding: 16px 14px calc(96px + env(safe-area-inset-bottom, 20px));
   }
 }

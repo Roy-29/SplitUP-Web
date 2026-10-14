@@ -96,3 +96,12 @@
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+@media (max-width: 600px) {
+  .analytics-view {
+    padding: 16px 14px calc(96px + env(safe-area-inset-bottom, 20px));
+  }
+  .analytics-total {
+    font-size: 2rem;
+  }
+}
