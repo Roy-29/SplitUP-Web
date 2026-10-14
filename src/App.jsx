@@ -349,23 +349,6 @@ function App() {
           </div>
           <div>
             <h1>SplitUP</h1>
-            <span style={{ 
-              fontSize: '0.68rem', 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '4px',
-              color: isTursoConfigured ? 'var(--success)' : 'var(--text-muted)',
-              fontWeight: 600,
-              letterSpacing: '0.5px'
-            }}>
-              <span style={{ 
-                width: '6px', 
-                height: '6px', 
-                borderRadius: '50%', 
-                backgroundColor: isTursoConfigured ? 'var(--success)' : '#e17055' 
-              }}></span>
-              {isTursoConfigured ? 'Turso Cloud' : 'Turso Setup'}
-            </span>
           </div>
         </NavLink>
 
@@ -431,20 +414,13 @@ function App() {
             <NavLink 
               to="/dashboard" 
               className="mobile-header-brand"
-              title="SplitUP - Turso Cloud"
+              title="SplitUP"
             >
               <div className="mobile-header-brand-icon">
                 <i className="ph ph-intersect"></i>
               </div>
               <div className="mobile-header-brand-info">
                 <span className="mobile-header-brand-name">SplitUP</span>
-                <span className="mobile-header-brand-status">
-                  <span 
-                    className="status-dot-pulse"
-                    style={{ backgroundColor: isTursoConfigured ? 'var(--success)' : '#e17055' }}
-                  ></span>
-                  {isTursoConfigured ? 'Turso Cloud' : 'Turso Setup'}
-                </span>
               </div>
             </NavLink>
 
