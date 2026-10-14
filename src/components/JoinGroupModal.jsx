@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { isTursoConfigured, tursoJoinGroupByCode } from '../lib/turso';
 import './Modal.css';
@@ -268,7 +269,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="modal-overlay animate-fade-in" onClick={() => { stopScanner(); onClose(); }}>
       <div 
         className="modal-content glass-panel" 
@@ -344,7 +345,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
 
         {/* TAB 1: Live Camera Scanner */}
         {activeTab === 'SCAN' && (
-          <div style={{ textAlign: 'center' }}>
+          <div className="modal-body" style={{ textAlign: 'center', overflowY: 'auto' }}>
             {cameraError ? (
               <div 
                 style={{ 
@@ -487,6 +488,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

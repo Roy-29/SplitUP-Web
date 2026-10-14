@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { LocalDatabase } from '../store/db';
 import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense } from '../lib/turso';
 import CustomSelect from './CustomSelect';
@@ -215,7 +216,7 @@ export default function NewExpenseModal({
   const activeGroupMembers = members.filter(m => String(m.groupId) === String(selectedGroupId));
   const displayMembers = activeGroupMembers.length > 0 ? activeGroupMembers : (groups.length > 0 ? [] : (currentUser ? [currentUser] : []));
 
-  return (
+  return createPortal(
     <div className="modal-overlay animate-fade-in" onClick={handleClose}>
       <div className="modal-content glass-panel" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
         <div className="modal-header">
@@ -481,6 +482,7 @@ export default function NewExpenseModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -15,8 +15,8 @@ export default function GroupsView({
   const [selectedQrGroup, setSelectedQrGroup] = useState(null);
 
   return (
-    <div className="content-grid animate-fade-in delay-2">
-      <div className="glass-panel" style={{ padding: '24px' }}>
+    <>
+      <div className="glass-panel animate-fade-in delay-2" style={{ padding: '28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '4px' }}>Your Groups</h2>
@@ -84,6 +84,6 @@ export default function GroupsView({
         onClose={() => setSelectedQrGroup(null)}
         group={selectedQrGroup}
       />
-    </div>
+    </>
   );
 }

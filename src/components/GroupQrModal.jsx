@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { avatarColorForName } from './GroupCard';
 import './Modal.css';
@@ -89,33 +90,33 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
     }
   };
 
-  return (
+  return createPortal(
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
       <div 
         className="modal-content glass-panel" 
         onClick={e => e.stopPropagation()} 
-        style={{ maxWidth: '440px', textAlign: 'center' }}
+        style={{ maxWidth: '420px', padding: '24px' }}
       >
         {/* Modal Header */}
-        <div className="modal-header" style={{ marginBottom: '16px' }}>
+        <div className="modal-header" style={{ marginBottom: '14px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
             <div 
               style={{ 
                 background: 'rgba(108, 92, 231, 0.15)', 
                 color: 'var(--accent-primary)', 
-                width: '40px', 
-                height: '40px', 
+                width: '38px', 
+                height: '38px', 
                 borderRadius: '50%', 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center' 
               }}
             >
-              <i className="ph ph-qr-code" style={{ fontSize: '1.3rem' }}></i>
+              <i className="ph ph-qr-code" style={{ fontSize: '1.25rem' }}></i>
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Group QR Code</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '2px 0 0' }}>
+              <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Group QR Code</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0' }}>
                 Scan to join instantly
               </p>
             </div>
@@ -125,64 +126,21 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
           </button>
         </div>
 
-        {/* Group Info Badge */}
+        {/* Modal Scrollable Body */}
         <div 
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--glass-border)',
-            padding: '8px 16px',
-            borderRadius: '24px',
-            marginBottom: '20px'
+          className="modal-body" 
+          style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            gap: '12px', 
+            overflowY: 'auto', 
+            flex: 1, 
+            padding: '2px 4px',
+            textAlign: 'center'
           }}
         >
-          <div 
-            style={{ 
-              width: '28px', 
-              height: '28px', 
-              borderRadius: '50%', 
-              background: `${avatarColor}25`, 
-              color: avatarColor, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              fontWeight: 'bold',
-              fontSize: '0.9rem'
-            }}
-          >
-            {initial}
-          </div>
-          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{group.name}</span>
-        </div>
-
-        {/* QR Code Card */}
-        <div 
-          style={{
-            background: '#ffffff',
-            padding: '20px',
-            borderRadius: '20px',
-            display: 'inline-block',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
-            marginBottom: '18px'
-          }}
-        >
-          <QRCodeCanvas 
-            id="group-qr-canvas"
-            value={inviteUrl}
-            size={220}
-            level="H"
-            marginSize={1}
-            ref={canvasRef}
-          />
-        </div>
-
-        {/* 6-Character Join Code Box */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-            Invite Code
-          </div>
+          {/* Group Info Badge */}
           <div 
             style={{
               display: 'inline-flex',
@@ -190,66 +148,125 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
               gap: '8px',
               background: 'var(--bg-tertiary)',
               border: '1px solid var(--glass-border)',
-              borderRadius: '12px',
-              padding: '6px 14px'
+              padding: '6px 14px',
+              borderRadius: '20px'
             }}
           >
-            <span style={{ 
-              fontFamily: 'monospace', 
-              fontSize: '1.35rem', 
-              fontWeight: '800', 
-              letterSpacing: '3px',
-              color: 'var(--accent-primary)' 
-            }}>
-              {joinCode}
-            </span>
+            <div 
+              style={{ 
+                width: '26px', 
+                height: '26px', 
+                borderRadius: '50%', 
+                background: `${avatarColor}25`, 
+                color: avatarColor, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                fontWeight: 'bold',
+                fontSize: '0.85rem'
+              }}
+            >
+              {initial}
+            </div>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{group.name}</span>
+          </div>
+
+          {/* QR Code Card */}
+          <div 
+            style={{
+              background: '#ffffff',
+              padding: '12px',
+              borderRadius: '16px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.22)'
+            }}
+          >
+            <QRCodeCanvas 
+              id="group-qr-canvas"
+              value={inviteUrl}
+              size={168}
+              level="H"
+              marginSize={1}
+              ref={canvasRef}
+            />
+          </div>
+
+          {/* 6-Character Join Code Box */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Invite Code
+            </div>
+            <div 
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: '10px',
+                padding: '4px 12px'
+              }}
+            >
+              <span style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '1.25rem', 
+                fontWeight: '800', 
+                letterSpacing: '2.5px',
+                color: 'var(--accent-primary)' 
+              }}>
+                {joinCode}
+              </span>
+              <button 
+                type="button" 
+                className="btn-icon"
+                onClick={handleCopyCode}
+                title="Copy code"
+                style={{ width: '28px', height: '28px', color: copiedCode ? 'var(--success)' : 'inherit' }}
+              >
+                <i className={copiedCode ? "ph ph-check" : "ph ph-copy"}></i>
+              </button>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%', maxWidth: '320px', marginTop: '2px' }}>
             <button 
               type="button" 
-              className="btn-icon"
-              onClick={handleCopyCode}
-              title="Copy code"
-              style={{ width: '32px', height: '32px', color: copiedCode ? 'var(--success)' : 'inherit' }}
+              className="btn-secondary"
+              onClick={handleCopyLink}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.88rem', padding: '8px 12px' }}
             >
-              <i className={copiedCode ? "ph ph-check" : "ph ph-copy"}></i>
+              <i className={copiedLink ? "ph ph-check" : "ph ph-link"}></i>
+              {copiedLink ? 'Copied!' : 'Copy Link'}
+            </button>
+
+            <button 
+              type="button" 
+              className="btn-secondary"
+              onClick={handleDownload}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.88rem', padding: '8px 12px' }}
+            >
+              <i className="ph ph-download-simple"></i>
+              Download
             </button>
           </div>
+
+          {navigator.share && (
+            <button 
+              type="button" 
+              className="btn-primary"
+              onClick={handleShare}
+              style={{ width: '100%', maxWidth: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.88rem', padding: '8px 12px' }}
+            >
+              <i className="ph ph-share-network"></i>
+              Share with Friends
+            </button>
+          )}
         </div>
-
-        {/* Action Buttons */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-          <button 
-            type="button" 
-            className="btn-secondary"
-            onClick={handleCopyLink}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-          >
-            <i className={copiedLink ? "ph ph-check" : "ph ph-link"}></i>
-            {copiedLink ? 'Link Copied!' : 'Copy Link'}
-          </button>
-
-          <button 
-            type="button" 
-            className="btn-secondary"
-            onClick={handleDownload}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-          >
-            <i className="ph ph-download-simple"></i>
-            Download
-          </button>
-        </div>
-
-        {navigator.share && (
-          <button 
-            type="button" 
-            className="btn-primary"
-            onClick={handleShare}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-          >
-            <i className="ph ph-share-network"></i>
-            Share with Friends
-          </button>
-        )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

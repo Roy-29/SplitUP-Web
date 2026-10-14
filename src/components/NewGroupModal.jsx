@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { isTursoConfigured, tursoCreateGroup, tursoAddMember } from '../lib/turso';
 import './Modal.css';
 
@@ -56,7 +57,7 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
     }
   };
 
-  return (
+  return createPortal(
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -154,6 +155,7 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

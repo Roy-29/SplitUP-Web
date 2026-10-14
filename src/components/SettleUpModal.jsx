@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { LocalDatabase } from '../store/db';
 import { isTursoConfigured, tursoAddSettlement } from '../lib/turso';
 import { formatSimple } from '../lib/CurrencyManager';
@@ -128,7 +129,7 @@ export default function SettleUpModal({
         onClose();
     };
 
-    return (
+    return createPortal(
         <div className="modal-overlay">
             <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '440px' }}>
                 <div className="modal-header">
@@ -432,6 +433,7 @@ export default function SettleUpModal({
                   payerUser={currentUser}
                 />
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
