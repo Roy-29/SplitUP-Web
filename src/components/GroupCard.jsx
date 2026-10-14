@@ -20,7 +20,7 @@ export function avatarColorForName(name) {
   return avatarColors[index];
 }
 
-export default function GroupCard({ group, onClick, onDeleteGroup, currencyCode = 'BDT' }) {
+export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, currencyCode = 'BDT' }) {
   const avatarColor = useMemo(() => avatarColorForName(group.name), [group.name]);
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
 
@@ -85,29 +85,56 @@ export default function GroupCard({ group, onClick, onDeleteGroup, currencyCode 
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>•</span>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{group.expenseCount || 0} items</span>
           {group.joinCode && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                navigator.clipboard.writeText(group.joinCode);
-                alert(`Join code "${group.joinCode}" copied to clipboard! Share it with friends to invite them.`);
-              }}
-              style={{
-                background: 'rgba(108, 92, 231, 0.15)',
-                border: '1px solid rgba(108, 92, 231, 0.3)',
-                color: 'var(--accent-secondary)',
-                padding: '3px 8px',
-                borderRadius: '6px',
-                fontSize: '0.73rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              title="Click to copy join code"
-            >
-              <i className="ph ph-copy"></i> Code: {group.joinCode}
-            </span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(group.joinCode);
+                  alert(`Join code "${group.joinCode}" copied to clipboard! Share it with friends to invite them.`);
+                }}
+                style={{
+                  background: 'rgba(108, 92, 231, 0.15)',
+                  border: '1px solid rgba(108, 92, 231, 0.3)',
+                  color: 'var(--accent-secondary)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  fontSize: '0.73rem',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title="Click to copy join code"
+              >
+                <i className="ph ph-copy"></i> Code: {group.joinCode}
+              </span>
+
+              {onShowQr && (
+                <button
+                  type="button"
+                  className="btn-icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShowQr(group);
+                  }}
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    background: 'rgba(108, 92, 231, 0.2)',
+                    color: 'var(--accent-primary)',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Show Group QR Code"
+                >
+                  <i className="ph ph-qr-code"></i>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

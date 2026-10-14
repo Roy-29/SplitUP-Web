@@ -205,6 +205,31 @@
   object-fit: cover;
 }
 
+.avatar-camera-btn {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #fff;
+  border: 2px solid var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s ease, background 0.18s ease;
+  z-index: 2;
+}
+
+.avatar-camera-btn:hover {
+  transform: scale(1.15);
+  background: var(--accent-secondary);
+}
+
 .profile-details {
   flex: 1;
   display: flex;

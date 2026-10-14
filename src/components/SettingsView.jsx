@@ -7,6 +7,7 @@ import {
   tursoRestoreData 
 } from '../lib/turso';
 import { currencies } from '../lib/CurrencyManager';
+import UserAvatar from './UserAvatar';
 import './SettingsView.css';
 
 export default function SettingsView({ 
@@ -21,6 +22,7 @@ export default function SettingsView({
 }) {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const avatarFileInputRef = useRef(null);
 
   // Modals state
   const [activeModal, setActiveModal] = useState(null); // 'currency', 'theme', 'editProfile', 'privacy', 'version', 'restore'
@@ -28,8 +30,85 @@ export default function SettingsView({
   // Edit Profile form state
   const [profileName, setProfileName] = useState(currentUser?.name || '');
   const [profileBio, setProfileBio] = useState(currentUser?.shortProfile || '');
+  const [profileAvatar, setProfileAvatar] = useState(currentUser?.avatar || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
+
+  // Sync state if currentUser changes
+  React.useEffect(() => {
+    setProfileName(currentUser?.name || '');
+    setProfileBio(currentUser?.shortProfile || '');
+    setProfileAvatar(currentUser?.avatar || '');
+  }, [currentUser]);
+
+  // Compress image helper using canvas to keep avatar size compact (<35KB)
+  const compressImage = (file, maxWidth = 256, maxHeight = 256) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          resolve(dataUrl);
+        };
+        img.onerror = () => reject(new Error('Failed to load image file.'));
+        img.src = e.target.result;
+      };
+      reader.onerror = () => reject(new Error('Failed to read image file.'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAvatarFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (PNG, JPG, WebP)', 'error');
+      return;
+    }
+
+    try {
+      showToast('Processing photo...', 'info');
+      const compressedDataUrl = await compressImage(file, 256, 256);
+      setProfileAvatar(compressedDataUrl);
+
+      // Save directly to database & storage immediately if not in the edit modal
+      if (activeModal !== 'editProfile') {
+        await tursoUpdateUserProfile(currentUser.id, { 
+          name: currentUser.name,
+          shortProfile: currentUser.shortProfile,
+          avatar: compressedDataUrl 
+        });
+        if (onRefreshData) await onRefreshData();
+        showToast('Profile photo updated successfully!');
+      }
+    } catch (err) {
+      showToast('Could not process image: ' + err.message, 'error');
+    } finally {
+      if (avatarFileInputRef.current) avatarFileInputRef.current.value = '';
+    }
+  };
 
   // Currency search state
   const [currencySearch, setCurrencySearch] = useState('');
@@ -61,7 +140,8 @@ export default function SettingsView({
     try {
       await tursoUpdateUserProfile(currentUser.id, {
         name: profileName,
-        shortProfile: profileBio
+        shortProfile: profileBio,
+        avatar: profileAvatar
       });
       if (onRefreshData) await onRefreshData();
       showToast("Profile updated successfully!");
@@ -256,13 +336,35 @@ export default function SettingsView({
         <div className="settings-group-title">Profile & Account</div>
         <div className="profile-account-card">
           <div className="profile-card-header">
-            <div className="profile-avatar">
-              {currentUser?.avatar ? (
-                <img src={currentUser.avatar} alt={currentUser.name} />
-              ) : (
-                <span>{currentUser?.name?.substring(0, 2).toUpperCase() || 'US'}</span>
-              )}
+            <div className="profile-avatar-wrapper" style={{ position: 'relative' }}>
+              <div 
+                className="profile-avatar" 
+                style={{ cursor: 'pointer' }}
+                onClick={() => avatarFileInputRef.current?.click()}
+                title="Click to change profile photo"
+              >
+                <UserAvatar user={currentUser} size={54} fontSize="1.3rem" />
+              </div>
+              <button 
+                type="button" 
+                className="avatar-camera-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  avatarFileInputRef.current?.click();
+                }}
+                title="Upload profile photo"
+              >
+                <i className="ph ph-camera"></i>
+              </button>
             </div>
+
+            <input 
+              type="file" 
+              ref={avatarFileInputRef} 
+              style={{ display: 'none' }} 
+              accept="image/png, image/jpeg, image/webp" 
+              onChange={handleAvatarFileSelect} 
+            />
 
             <div className="profile-details">
               <div className="profile-name-row">
@@ -277,6 +379,7 @@ export default function SettingsView({
                   onClick={() => {
                     setProfileName(currentUser?.name || '');
                     setProfileBio(currentUser?.shortProfile || '');
+                    setProfileAvatar(currentUser?.avatar || '');
                     setProfileMessage(null);
                     setActiveModal('editProfile');
                   }}
@@ -492,6 +595,49 @@ export default function SettingsView({
                   {profileMessage.text}
                 </div>
               )}
+
+              {/* Profile Photo Upload & Preview */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label>Profile Picture</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '6px' }}>
+                  <UserAvatar 
+                    user={{ ...currentUser, avatar: profileAvatar }} 
+                    size={64} 
+                    fontSize="1.5rem" 
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button 
+                      type="button" 
+                      className="btn-secondary"
+                      style={{ padding: '6px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => avatarFileInputRef.current?.click()}
+                    >
+                      <i className="ph ph-upload-simple"></i>
+                      <span>{profileAvatar ? 'Change Photo' : 'Upload Photo'}</span>
+                    </button>
+                    {profileAvatar && (
+                      <button 
+                        type="button" 
+                        style={{ 
+                          padding: '4px 8px', 
+                          fontSize: '0.78rem', 
+                          background: 'none', 
+                          border: 'none', 
+                          color: '#f43f5e', 
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        onClick={() => setProfileAvatar('')}
+                      >
+                        <i className="ph ph-trash"></i>
+                        <span>Remove Photo</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <div className="form-group">
                 <label>Display Name</label>

@@ -80,6 +80,9 @@ export async function initTursoTables() {
     try {
       await tursoClient.execute("ALTER TABLE expenses ADD COLUMN isPersonal INTEGER DEFAULT 0;");
     } catch (_) {}
+    try {
+      await tursoClient.execute("ALTER TABLE users ADD COLUMN avatar TEXT;");
+    } catch (_) {}
 
     isTablesInitialized = true;
     console.log("Turso tables initialized successfully with personal & join code support.");
@@ -139,7 +142,7 @@ export async function tursoSignIn(email, password) {
   const normalizedEmail = email.trim().toLowerCase();
 
   const result = await tursoClient.execute({
-    sql: 'SELECT id, name, email, shortProfile, password FROM users WHERE email = ? LIMIT 1;',
+    sql: 'SELECT id, name, email, shortProfile, avatar, password FROM users WHERE email = ? LIMIT 1;',
     args: [normalizedEmail]
   });
 
@@ -156,7 +159,8 @@ export async function tursoSignIn(email, password) {
     id: String(userRow.id),
     name: String(userRow.name),
     email: String(userRow.email),
-    shortProfile: userRow.shortProfile ? String(userRow.shortProfile) : ''
+    shortProfile: userRow.shortProfile ? String(userRow.shortProfile) : '',
+    avatar: userRow.avatar ? String(userRow.avatar) : ''
   };
 
   localStorage.setItem('splitup_turso_user', JSON.stringify(user));
@@ -571,19 +575,27 @@ export async function tursoGoogleSignIn(credentialToken) {
 
   // Check if user already exists in Turso
   const existing = await tursoClient.execute({
-    sql: 'SELECT id, name, email, shortProfile FROM users WHERE email = ? LIMIT 1;',
+    sql: 'SELECT id, name, email, shortProfile, avatar FROM users WHERE email = ? LIMIT 1;',
     args: [email]
   });
 
   let user;
   if (existing.rows.length > 0) {
     const row = existing.rows[0];
+    if (avatar) {
+      try {
+        await tursoClient.execute({
+          sql: 'UPDATE users SET avatar = ? WHERE email = ?;',
+          args: [avatar, email]
+        });
+      } catch (_) {}
+    }
     user = {
       id: String(row.id),
       name: String(row.name),
       email: String(row.email),
       shortProfile: row.shortProfile ? String(row.shortProfile) : '',
-      avatar
+      avatar: avatar || (row.avatar ? String(row.avatar) : '')
     };
   } else {
     // New Google user! Register in users
@@ -591,8 +603,8 @@ export async function tursoGoogleSignIn(credentialToken) {
     const now = Date.now();
 
     await tursoClient.execute({
-      sql: 'INSERT INTO users (id, name, email, password, shortProfile, createdAt) VALUES (?, ?, ?, ?, ?, ?);',
-      args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', now]
+      sql: 'INSERT INTO users (id, name, email, password, shortProfile, avatar, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
+      args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', avatar, now]
     });
 
     user = {
@@ -610,26 +622,29 @@ export async function tursoGoogleSignIn(credentialToken) {
 
 // ----------------- Profile & Data Backup/Restore -----------------
 
-export async function tursoUpdateUserProfile(userId, { name, shortProfile }) {
+export async function tursoUpdateUserProfile(userId, { name, shortProfile, avatar }) {
+  const current = tursoGetCurrentUser() || {};
+  const trimmedName = (name !== undefined ? name : current.name || '').trim();
+  const trimmedProfile = (shortProfile !== undefined ? shortProfile : current.shortProfile || '').trim();
+  const updatedAvatar = avatar !== undefined ? avatar : (current.avatar || '');
+
   if (!tursoClient) {
     // Offline / local fallback
-    const current = tursoGetCurrentUser() || {};
     const updated = {
       ...current,
-      name: (name || current.name || '').trim(),
-      shortProfile: (shortProfile || '').trim()
+      name: trimmedName,
+      shortProfile: trimmedProfile,
+      avatar: updatedAvatar
     };
     localStorage.setItem('splitup_turso_user', JSON.stringify(updated));
     return updated;
   }
 
   await initTursoTables();
-  const trimmedName = (name || '').trim();
-  const trimmedProfile = (shortProfile || '').trim();
 
   await tursoClient.execute({
-    sql: 'UPDATE users SET name = ?, shortProfile = ? WHERE id = ?;',
-    args: [trimmedName, trimmedProfile, String(userId)]
+    sql: 'UPDATE users SET name = ?, shortProfile = ?, avatar = ? WHERE id = ?;',
+    args: [trimmedName, trimmedProfile, updatedAvatar, String(userId)]
   });
 
   try {
@@ -639,14 +654,52 @@ export async function tursoUpdateUserProfile(userId, { name, shortProfile }) {
     });
   } catch (_) {}
 
-  const current = tursoGetCurrentUser() || {};
   const updated = {
     ...current,
     name: trimmedName || current.name,
-    shortProfile: trimmedProfile
+    shortProfile: trimmedProfile,
+    avatar: updatedAvatar
   };
   localStorage.setItem('splitup_turso_user', JSON.stringify(updated));
   return updated;
+}
+
+export async function tursoSyncCurrentUser(userId, email) {
+  if (!tursoClient) return tursoGetCurrentUser();
+  try {
+    await initTursoTables();
+    let result = null;
+    if (userId) {
+      result = await tursoClient.execute({
+        sql: 'SELECT id, name, email, shortProfile, avatar FROM users WHERE id = ? LIMIT 1;',
+        args: [String(userId)]
+      });
+    }
+    if ((!result || result.rows.length === 0) && email) {
+      result = await tursoClient.execute({
+        sql: 'SELECT id, name, email, shortProfile, avatar FROM users WHERE email = ? LIMIT 1;',
+        args: [email.trim().toLowerCase()]
+      });
+    }
+
+    if (result && result.rows.length > 0) {
+      const row = result.rows[0];
+      const current = tursoGetCurrentUser() || {};
+      const updated = {
+        ...current,
+        id: String(row.id),
+        name: String(row.name),
+        email: String(row.email),
+        shortProfile: row.shortProfile ? String(row.shortProfile) : '',
+        avatar: row.avatar ? String(row.avatar) : (current.avatar || '')
+      };
+      localStorage.setItem('splitup_turso_user', JSON.stringify(updated));
+      return updated;
+    }
+  } catch (err) {
+    console.warn("Failed to sync current user from Turso:", err);
+  }
+  return tursoGetCurrentUser();
 }
 
 export async function tursoExportAllData(userId) {

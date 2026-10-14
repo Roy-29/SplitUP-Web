@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import GroupCard from './GroupCard';
 import JoinGroupModal from './JoinGroupModal';
+import GroupQrModal from './GroupQrModal';
 
 export default function GroupsView({ 
   groups, 
@@ -11,6 +12,7 @@ export default function GroupsView({
   onRefreshData 
 }) {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [selectedQrGroup, setSelectedQrGroup] = useState(null);
 
   return (
     <div className="content-grid animate-fade-in delay-2">
@@ -22,8 +24,8 @@ export default function GroupsView({
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button className="btn-secondary" onClick={() => setIsJoinModalOpen(true)}>
-              <i className="ph ph-sign-in"></i>
-              Join with Code
+              <i className="ph ph-qr-code"></i>
+              Join with Code / QR
             </button>
             <button className="btn-primary" onClick={onNewGroupClick}>
               <i className="ph ph-plus"></i>
@@ -39,6 +41,7 @@ export default function GroupsView({
                 key={group.id} 
                 group={group} 
                 onDeleteGroup={onDeleteGroup}
+                onShowQr={setSelectedQrGroup}
                 currencyCode={currencyCode}
                 onClick={() => console.log('Group clicked:', group.id)} 
               />
@@ -55,11 +58,11 @@ export default function GroupsView({
             </div>
             <h3 style={{ marginBottom: '8px' }}>No groups yet</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-              Create your first group to start splitting, or join an existing group with an invite code.
+              Create your first group to start splitting, or join an existing group with an invite code or QR scan.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
               <button className="btn-secondary" onClick={() => setIsJoinModalOpen(true)}>
-                <i className="ph ph-sign-in"></i> Join with Code
+                <i className="ph ph-qr-code"></i> Join with Code / QR
               </button>
               <button className="btn-primary" onClick={onNewGroupClick}>
                 <i className="ph ph-plus"></i> Create Group
@@ -74,6 +77,12 @@ export default function GroupsView({
         onClose={() => setIsJoinModalOpen(false)}
         onSuccess={onRefreshData}
         currentUser={currentUser}
+      />
+
+      <GroupQrModal
+        isOpen={!!selectedQrGroup}
+        onClose={() => setSelectedQrGroup(null)}
+        group={selectedQrGroup}
       />
     </div>
   );

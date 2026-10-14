@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { LocalDatabase } from './store/db'
 import { calculateBalances, simplifyDebts, getTotalGroupBalance } from './lib/BalanceCalculator'
 import DashboardView from './components/DashboardView'
@@ -10,6 +10,8 @@ import ExpensesView from './components/ExpensesView'
 import AnalyticsView from './components/AnalyticsView'
 import SettingsView from './components/SettingsView'
 import NewGroupModal from './components/NewGroupModal'
+import JoinGroupModal from './components/JoinGroupModal'
+import UserAvatar from './components/UserAvatar'
 import AuthScreen from './components/AuthScreen'
 import { 
   isTursoConfigured, 
@@ -23,12 +25,35 @@ import {
   tursoDeleteSettlement,
   tursoDeleteGroup,
   initTursoTables, 
-  tursoSignOut 
+  tursoSignOut,
+  tursoSyncCurrentUser 
 } from './lib/turso';
 import './components/Modal.css'
 import './App.css'
 
 import { formatSimple, formatCompact } from './lib/CurrencyManager'
+
+function JoinRouteHandler({ currentUser, onJoinSuccess }) {
+  const { code } = useParams();
+  const navigate = useNavigate();
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <JoinGroupModal
+      isOpen={isOpen}
+      initialCode={code}
+      currentUser={currentUser}
+      onSuccess={() => {
+        onJoinSuccess?.();
+        navigate('/groups', { replace: true });
+      }}
+      onClose={() => {
+        setIsOpen(false);
+        navigate('/groups', { replace: true });
+      }}
+    />
+  );
+}
 
 function App() {
   const navigate = useNavigate();
@@ -58,16 +83,20 @@ function App() {
   const notificationRef = useRef(null);
 
   useEffect(() => {
+    if (!isNotificationsOpen) return;
+
     const handleClickOutside = (event) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         setIsNotificationsOpen(false);
       }
     };
-    if (isNotificationsOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [isNotificationsOpen]);
 
@@ -103,6 +132,15 @@ function App() {
     checkSession();
   }, []);
 
+  useEffect(() => {
+    if (location.pathname.startsWith('/join/')) {
+      const code = location.pathname.split('/join/')[1]?.split('/')[0]?.trim().toUpperCase();
+      if (code) {
+        sessionStorage.setItem('pending_join_code', code);
+      }
+    }
+  }, [location.pathname]);
+
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
@@ -122,7 +160,7 @@ function App() {
     let mockGroups = [];
 
     // Determine current user strictly from authenticated session
-    const loggedUser = tursoGetCurrentUser();
+    let loggedUser = tursoGetCurrentUser();
     if (!loggedUser) {
       setIsAuthenticated(false);
       return;
@@ -131,6 +169,8 @@ function App() {
     if (isTursoConfigured) {
       try {
         await initTursoTables();
+        const synced = await tursoSyncCurrentUser(loggedUser.id, loggedUser.email);
+        if (synced) loggedUser = synced;
         const [tMembers, tExpenses, tSettlements, tGroups, tPersonal] = await Promise.all([
           tursoGetMembers(),
           tursoGetExpenses(),
@@ -249,7 +289,13 @@ function App() {
             onLoginSuccess={() => {
               setIsAuthenticated(true);
               loadData();
-              navigate('/dashboard');
+              const pending = sessionStorage.getItem('pending_join_code');
+              if (pending) {
+                sessionStorage.removeItem('pending_join_code');
+                navigate(`/join/${pending}`, { replace: true });
+              } else {
+                navigate('/dashboard');
+              }
             }}
           />
         } />
@@ -268,7 +314,7 @@ function App() {
     return formatCompact(amount, currencyCode);
   }
 
-  const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups } = data;
+  const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups, totalOwed, totalToReceive } = data;
   const currentActiveGroupId = groups.length > 0 ? groups[0].id : '1';
 
   return (
@@ -351,13 +397,7 @@ function App() {
             outline: isActive ? '2px solid var(--accent-primary)' : 'none'
           })}
         >
-          <div className="avatar">
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-            ) : (
-              currentUser.name?.substring(0, 2).toUpperCase()
-            )}
-          </div>
+          <UserAvatar user={currentUser} size={40} className="avatar" />
           <div className="user-info">
             <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>{currentUser.name}</h4>
             <p style={{ marginTop: '2px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{currentUser.email}</p>
@@ -376,12 +416,7 @@ function App() {
             <div className="header-actions">
               <NavLink to="/settings" className="header-user-btn" title="View Profile & Settings">
                 <div className="header-avatar-circle">
-                  {currentUser.avatar ? (
-                    <img src={currentUser.avatar} alt={currentUser.name} />
-                  ) : (
-                    <span>{currentUser.name?.substring(0, 2).toUpperCase() || 'US'}</span>
-                  )}
-                  <span className="header-online-status"></span>
+                  <UserAvatar user={currentUser} size={32} showOnline={true} />
                 </div>
                 <span className="header-username">{currentUser.name?.split(' ')[0]}</span>
               </NavLink>
@@ -392,17 +427,22 @@ function App() {
               {/* Notification Popover Dropdown */}
               <div className="notification-wrapper" ref={notificationRef}>
                 <button 
+                  type="button"
+                  id="notification-trigger-btn"
                   className={`btn-icon notification-trigger-btn ${isNotificationsOpen ? 'active' : ''}`} 
                   onClick={() => setIsNotificationsOpen(prev => !prev)} 
                   title="Notifications"
-                  aria-label="Open notifications"
+                  aria-label="Toggle notifications"
                 >
                   <i className="ph ph-bell"></i>
                   <span className="notification-dot"></span>
                 </button>
 
                 {isNotificationsOpen && (
-                  <div className="notification-dropdown">
+                  <div 
+                    className="notification-dropdown"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="notification-dropdown-header">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>Notifications</h4>
@@ -411,7 +451,10 @@ function App() {
                       <button 
                         type="button" 
                         className="notification-close-btn"
-                        onClick={() => setIsNotificationsOpen(false)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsNotificationsOpen(false);
+                        }}
                       >
                         <i className="ph ph-x"></i>
                       </button>
@@ -440,47 +483,55 @@ function App() {
 
                       {/* Financial Balance Summary */}
                       <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/dashboard'); }}>
-                        <div className={`notification-icon-box ${myBalance?.toReceive > 0 ? 'info' : (myBalance?.owed > 0 ? 'warning' : 'success')}`}>
-                          <i className={`ph ${myBalance?.toReceive > 0 ? 'ph-hand-coins' : (myBalance?.owed > 0 ? 'ph-wallet' : 'ph-check-circle')}`}></i>
+                        <div className={`notification-icon-box ${totalToReceive > 0 ? 'info' : (totalOwed > 0 ? 'warning' : 'success')}`}>
+                          <i className={`ph ${totalToReceive > 0 ? 'ph-hand-coins' : (totalOwed > 0 ? 'ph-wallet' : 'ph-check-circle')}`}></i>
                         </div>
                         <div className="notification-body">
                           <div className="notification-body-header">
                             <span className="notification-item-title">
-                              {myBalance?.toReceive > 0 
+                              {totalToReceive > 0 
                                 ? 'Receivable Reminder' 
-                                : (myBalance?.owed > 0 ? 'Pending Payables' : 'Finances Balanced')}
+                                : (totalOwed > 0 ? 'Pending Payables' : 'Finances Balanced')}
                             </span>
                             <span className="notification-time">Balance</span>
                           </div>
                           <p className="notification-item-desc">
-                            {myBalance?.toReceive > 0 
-                              ? `You have a total of ${formatCurrency(myBalance.toReceive)} to receive from your friends.`
-                              : (myBalance?.owed > 0 
-                                ? `You have an outstanding balance of ${formatCurrency(myBalance.owed)} across your groups.`
+                            {totalToReceive > 0 
+                              ? `You have a total of ${formatCurrency(totalToReceive)} to receive from your friends.`
+                              : (totalOwed > 0 
+                                ? `You have an outstanding balance of ${formatCurrency(totalOwed)} across your groups.`
                                 : 'All debts settled! You have no outstanding dues.')}
                           </p>
                         </div>
                       </div>
 
                       {/* Latest Activity Notice */}
-                      {activities && activities.length > 0 && (
-                        <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/expenses'); }}>
-                          <div className="notification-icon-box accent">
-                            <i className="ph ph-receipt"></i>
-                          </div>
-                          <div className="notification-body">
-                            <div className="notification-body-header">
-                              <span className="notification-item-title" style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {activities[0].title || 'Recent Transaction'}
-                              </span>
-                              <span className="notification-time">Latest</span>
+                      {activities && activities.length > 0 && (() => {
+                        const act = activities[0];
+                        const d = act.data || {};
+                        const isExp = act.type === 'EXPENSE';
+                        const title = isExp ? (d.title || 'Group Expense') : (d.title || 'Settlement');
+                        const amount = d.amount || 0;
+                        const payer = d.payerName || d.paidByName || (isExp && d.paidBy === currentUser.id ? 'You' : 'Member');
+                        return (
+                          <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/expenses'); }}>
+                            <div className="notification-icon-box accent">
+                              <i className={`ph ${isExp ? 'ph-receipt' : 'ph-handshake'}`}></i>
                             </div>
-                            <p className="notification-item-desc">
-                              {activities[0].type === 'EXPENSE' ? 'Expense' : 'Settlement'} of {formatCurrency(activities[0].amount)} by {activities[0].payerName || 'Member'}.
-                            </p>
+                            <div className="notification-body">
+                              <div className="notification-body-header">
+                                <span className="notification-item-title" style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {title}
+                                </span>
+                                <span className="notification-time">Latest</span>
+                              </div>
+                              <p className="notification-item-desc">
+                                {isExp ? 'Expense' : 'Settlement'} of {formatCurrency(amount)} by {payer}.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     <div className="notification-dropdown-footer">
@@ -613,6 +664,12 @@ function App() {
                 setIsAuthenticated(false);
                 navigate('/login');
               }} 
+            />
+          } />
+          <Route path="/join/:code" element={
+            <JoinRouteHandler 
+              currentUser={currentUser} 
+              onJoinSuccess={loadData} 
             />
           } />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

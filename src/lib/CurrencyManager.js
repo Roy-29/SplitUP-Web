@@ -39,17 +39,19 @@ export function getSymbol(code) {
 
 export function formatCompact(amount, currencyCode = "BDT") {
     const symbol = getSymbol(currencyCode);
-    if (amount >= 10000000) return `${symbol}${(amount / 10000000).toFixed(1)}Cr`;
-    if (amount >= 100000) return `${symbol}${(amount / 100000).toFixed(1)}L`;
-    if (amount >= 1000) return `${symbol}${(amount / 1000).toFixed(1)}K`;
-    return `${symbol}${amount.toFixed(0)}`;
+    const validAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+    if (validAmount >= 10000000) return `${symbol}${(validAmount / 10000000).toFixed(1)}Cr`;
+    if (validAmount >= 100000) return `${symbol}${(validAmount / 100000).toFixed(1)}L`;
+    if (validAmount >= 1000) return `${symbol}${(validAmount / 1000).toFixed(1)}K`;
+    return `${symbol}${validAmount.toFixed(0)}`;
 }
 
 export function formatSimple(amount, currencyCode = "BDT") {
     const symbol = getSymbol(currencyCode);
+    const validAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
     // Mimic string formatting with thousands separators
-    const numStr = amount % 1 === 0 
-        ? amount.toLocaleString('en-US') 
-        : amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const numStr = validAmount % 1 === 0 
+        ? validAmount.toLocaleString('en-US') 
+        : validAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `${symbol}${numStr}`;
 }
