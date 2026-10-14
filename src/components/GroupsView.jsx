@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import GroupCard from './GroupCard';
 import JoinGroupModal from './JoinGroupModal';
 
-export default function GroupsView({ groups, onNewGroupClick, currentUser, onRefreshData }) {
+export default function GroupsView({ 
+  groups, 
+  onNewGroupClick, 
+  currentUser, 
+  onDeleteGroup, 
+  currencyCode = 'BDT', 
+  onRefreshData 
+}) {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
   return (
@@ -31,6 +38,8 @@ export default function GroupsView({ groups, onNewGroupClick, currentUser, onRef
               <GroupCard 
                 key={group.id} 
                 group={group} 
+                onDeleteGroup={onDeleteGroup}
+                currencyCode={currencyCode}
                 onClick={() => console.log('Group clicked:', group.id)} 
               />
             ))}

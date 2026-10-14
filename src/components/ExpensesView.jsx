@@ -2,16 +2,35 @@ import React, { useState } from 'react';
 import { formatSimple } from '../lib/CurrencyManager';
 import './ExpensesView.css';
 
+export const LEGACY_CATEGORY_MAP = {
+  'বাজার': 'Groceries',
+  'শপিং': 'Shopping',
+  'খাবার': 'Food & Dining',
+  'বই': 'Books & Learning',
+  'বিল': 'Bills & Utilities',
+  'বিল ও ইউটিলিটি': 'Bills & Utilities',
+  'যাতায়াত': 'Transport & Travel',
+  'মেডিকেল': 'Health & Medical',
+  'স্বাস্থ্য / ঔষধ': 'Health & Medical',
+  'অন্যান্য': 'Other'
+};
+
+export function normalizeCategory(cat) {
+  if (!cat) return 'Other';
+  const trimmed = String(cat).trim();
+  return LEGACY_CATEGORY_MAP[trimmed] || trimmed;
+}
+
 const CATEGORY_META = {
-  'বাজার': { icon: 'ph-shopping-cart', color: '#00b894', bg: 'rgba(0, 184, 148, 0.15)' },
-  'শপিং': { icon: 'ph-bag', color: '#e84393', bg: 'rgba(232, 67, 147, 0.15)' },
-  'খাবার': { icon: 'ph-pizza', color: '#e17055', bg: 'rgba(225, 112, 85, 0.15)' },
-  'বই': { icon: 'ph-book-open', color: '#0984e3', bg: 'rgba(9, 132, 227, 0.15)' },
-  'বিল': { icon: 'ph-lightning', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
-  'বিল ও ইউটিলিটি': { icon: 'ph-lightning', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
-  'যাতায়াত': { icon: 'ph-bus', color: '#6c5ce7', bg: 'rgba(108, 92, 231, 0.15)' },
-  'মেডিকেল': { icon: 'ph-first-aid', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
-  'স্বাস্থ্য / ঔষধ': { icon: 'ph-first-aid', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
+  'Groceries': { icon: 'ph-shopping-cart', color: '#00b894', bg: 'rgba(0, 184, 148, 0.15)' },
+  'Shopping': { icon: 'ph-bag', color: '#e84393', bg: 'rgba(232, 67, 147, 0.15)' },
+  'Food & Dining': { icon: 'ph-pizza', color: '#e17055', bg: 'rgba(225, 112, 85, 0.15)' },
+  'Books & Learning': { icon: 'ph-book-open', color: '#0984e3', bg: 'rgba(9, 132, 227, 0.15)' },
+  'Bills & Utilities': { icon: 'ph-lightning', color: '#fdcb6e', bg: 'rgba(253, 203, 110, 0.15)' },
+  'Transport & Travel': { icon: 'ph-bus', color: '#6c5ce7', bg: 'rgba(108, 92, 231, 0.15)' },
+  'Health & Medical': { icon: 'ph-first-aid', color: '#d63031', bg: 'rgba(214, 48, 49, 0.15)' },
+  'Other': { icon: 'ph-tag', color: '#a29bfe', bg: 'rgba(162, 155, 254, 0.15)' },
+  'General': { icon: 'ph-tag', color: '#a29bfe', bg: 'rgba(162, 155, 254, 0.15)' },
   'FOOD': { icon: 'ph-pizza', color: '#e17055', bg: 'rgba(225, 112, 85, 0.15)' },
   'TRAVEL': { icon: 'ph-airplane-tilt', color: '#0984e3', bg: 'rgba(9, 132, 227, 0.15)' },
   'GROCERIES': { icon: 'ph-shopping-cart', color: '#00b894', bg: 'rgba(0, 184, 148, 0.15)' },
@@ -21,10 +40,10 @@ const CATEGORY_META = {
 };
 
 function getCategoryMeta(catName = '') {
-  const normalized = String(catName).trim();
+  const normalized = normalizeCategory(catName);
   if (CATEGORY_META[normalized]) return CATEGORY_META[normalized];
   for (const [key, val] of Object.entries(CATEGORY_META)) {
-    if (normalized.includes(key)) return val;
+    if (normalized.toLowerCase().includes(key.toLowerCase())) return val;
   }
   return { icon: 'ph-tag', color: '#a29bfe', bg: 'rgba(162, 155, 254, 0.15)' };
 }
@@ -33,11 +52,15 @@ export default function ExpensesView({
   activities = [], 
   personalExpenses = [], 
   onNewExpenseClick,
-  onDeleteExpense
+  onDeleteExpense,
+  onDeleteSettlement,
+  currencyCode = 'BDT'
 }) {
   const [activeTab, setActiveTab] = useState('PERSONAL'); // 'PERSONAL' | 'GROUP'
   const [groupFilter, setGroupFilter] = useState('ALL');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState(null);
+  const [deletingExpenseId, setDeletingExpenseId] = useState(null);
+  const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   // Group filter calculations
   const filteredActivities = activities.filter(activity => {
@@ -49,7 +72,7 @@ export default function ExpensesView({
 
   // Personal category aggregations
   const categoryStats = personalExpenses.reduce((acc, exp) => {
-    const cat = exp.category || 'অন্যান্য';
+    const cat = normalizeCategory(exp.category);
     if (!acc[cat]) {
       acc[cat] = { total: 0, count: 0 };
     }
@@ -62,7 +85,7 @@ export default function ExpensesView({
 
   // Filtered personal expenses
   const displayedPersonalExpenses = selectedCategoryFilter 
-    ? personalExpenses.filter(e => (e.category || 'অন্যান্য') === selectedCategoryFilter)
+    ? personalExpenses.filter(e => normalizeCategory(e.category) === selectedCategoryFilter)
     : personalExpenses;
 
   const formatDate = (timestamp) => {
@@ -81,10 +104,10 @@ export default function ExpensesView({
           </div>
           <div>
             <h2 style={{ fontSize: '1.4rem', margin: 0 }}>
-              {activeTab === 'PERSONAL' ? 'Personal Expenses (ব্যক্তিগত খরচ)' : 'Group Activity & Expenses'}
+              {activeTab === 'PERSONAL' ? 'Personal Expenses' : 'Group Activity & Expenses'}
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '3px 0 0' }}>
-              {activeTab === 'PERSONAL' ? 'আপনার নিজের ব্যক্তিগত কেনাকাটা ও খরচের বিস্তারিত হিসাব' : 'গ্রুপের শেয়ার করা সব খরচ ও লেনদেন'}
+              {activeTab === 'PERSONAL' ? 'Detailed record of your private purchases and personal daily spending' : 'All shared expenses and settlement transactions across your groups'}
             </p>
           </div>
         </div>
@@ -137,7 +160,7 @@ export default function ExpensesView({
                 Total Personal Spending
               </span>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
-                {formatSimple(totalPersonalSpent, 'BDT')}
+                {formatSimple(totalPersonalSpent, currencyCode)}
               </div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 Across {Object.keys(categoryStats).length} categories • {personalExpenses.length} records
@@ -158,7 +181,7 @@ export default function ExpensesView({
           {/* Category Cards Grid */}
           <div>
             <h3 style={{ fontSize: '1.05rem', marginBottom: '12px', color: 'var(--text-primary)' }}>
-              Categories (ক্যাটাগরি ভিত্তিক খরচ)
+              Spending by Category
             </h3>
 
             {Object.keys(categoryStats).length > 0 ? (
@@ -204,7 +227,7 @@ export default function ExpensesView({
                           {catName}
                         </div>
                         <div style={{ fontSize: '1.15rem', fontWeight: 800, color: meta.color, marginTop: '2px' }}>
-                          {formatSimple(stats.total, 'BDT')}
+                          {formatSimple(stats.total, currencyCode)}
                         </div>
                       </div>
                     </div>
@@ -213,7 +236,7 @@ export default function ExpensesView({
               </div>
             ) : (
               <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-item)', border: '1px solid var(--glass-border)', borderRadius: '12px', color: 'var(--text-muted)' }}>
-                ক্যাটাগরিভিত্তিক খরচ দেখতে আপনার প্রথম ব্যক্তিগত খরচ যোগ করুন (যেমন: বাজার, বই, শপিং)।
+                Add your first personal expense (e.g., Groceries, Shopping, Dining) to see your category breakdown.
               </div>
             )}
           </div>
@@ -222,7 +245,7 @@ export default function ExpensesView({
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0 }}>
-                {selectedCategoryFilter ? `"${selectedCategoryFilter}" খরচের তালিকা` : 'সকল ব্যক্তিগত খরচ'} ({displayedPersonalExpenses.length})
+                {selectedCategoryFilter ? `"${selectedCategoryFilter}" Expenses` : 'All Personal Expenses'} ({displayedPersonalExpenses.length})
               </h3>
             </div>
 
@@ -279,7 +302,7 @@ export default function ExpensesView({
                               padding: '2px 6px',
                               borderRadius: '4px'
                             }}>
-                              {item.category || 'অন্যান্য'}
+                              {normalizeCategory(item.category)}
                             </span>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>•</span>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -299,21 +322,51 @@ export default function ExpensesView({
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
                         <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                          {formatSimple(item.amount, 'BDT')}
+                          {formatSimple(item.amount, currencyCode)}
                         </div>
                         {onDeleteExpense && (
-                          <button 
-                            className="btn-icon"
-                            onClick={() => {
-                              if (window.confirm(`Delete "${item.title}"?`)) {
-                                onDeleteExpense(item.id);
-                              }
-                            }}
-                            title="Delete expense"
-                            style={{ width: '32px', height: '32px', color: 'var(--text-muted)' }}
-                          >
-                            <i className="ph ph-trash"></i>
-                          </button>
+                          deletingExpenseId === item.id ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <button 
+                                className="btn-primary"
+                                onClick={() => {
+                                  onDeleteExpense(item.id);
+                                  setDeletingExpenseId(null);
+                                }}
+                                style={{ 
+                                  background: '#d63031', 
+                                  fontSize: '0.75rem', 
+                                  padding: '4px 10px', 
+                                  height: '28px', 
+                                  borderRadius: '6px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                Delete
+                              </button>
+                              <button 
+                                className="btn-secondary"
+                                onClick={() => setDeletingExpenseId(null)}
+                                style={{ 
+                                  fontSize: '0.75rem', 
+                                  padding: '4px 8px', 
+                                  height: '28px', 
+                                  borderRadius: '6px'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              className="btn-icon delete-btn"
+                              onClick={() => setDeletingExpenseId(item.id)}
+                              title="Delete expense"
+                              style={{ width: '32px', height: '32px' }}
+                            >
+                              <i className="ph ph-trash"></i>
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -396,8 +449,58 @@ export default function ExpensesView({
                         </div>
                       </div>
                       
-                      <div className="timeline-amount" style={{ color: isExpense ? 'var(--text-primary)' : 'var(--success)' }}>
-                        {formatSimple(data.amount, 'BDT')}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                        <div className="timeline-amount" style={{ color: isExpense ? 'var(--text-primary)' : 'var(--success)' }}>
+                          {formatSimple(data.amount, currencyCode)}
+                        </div>
+                        {((isExpense && onDeleteExpense) || (!isExpense && onDeleteSettlement)) && (
+                          deletingActivityId === data.id ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <button 
+                                className="btn-primary"
+                                onClick={() => {
+                                  if (isExpense) {
+                                    onDeleteExpense(data.id);
+                                  } else {
+                                    onDeleteSettlement(data.id);
+                                  }
+                                  setDeletingActivityId(null);
+                                }}
+                                style={{ 
+                                  background: '#d63031', 
+                                  fontSize: '0.75rem', 
+                                  padding: '4px 10px', 
+                                  height: '28px', 
+                                  borderRadius: '6px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                Delete
+                              </button>
+                              <button 
+                                className="btn-secondary"
+                                onClick={() => setDeletingActivityId(null)}
+                                style={{ 
+                                  fontSize: '0.75rem', 
+                                  padding: '4px 8px', 
+                                  height: '28px', 
+                                  borderRadius: '6px'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              className="btn-icon delete-btn"
+                              onClick={() => setDeletingActivityId(data.id)}
+                              title={`Delete ${isExpense ? 'expense' : 'settlement'}`}
+                              style={{ width: '32px', height: '32px' }}
+                            >
+                              <i className="ph ph-trash"></i>
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   </div>

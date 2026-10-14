@@ -4,14 +4,14 @@ import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense } from '../
 import './Modal.css';
 
 const PERSONAL_CATEGORIES = [
-  { id: 'বাজার', name: 'বাজার', icon: 'ph-shopping-cart', color: '#00b894' },
-  { id: 'শপিং', name: 'শপিং', icon: 'ph-bag', color: '#e84393' },
-  { id: 'খাবার', name: 'খাবার', icon: 'ph-pizza', color: '#e17055' },
-  { id: 'বই', name: 'বই', icon: 'ph-book-open', color: '#0984e3' },
-  { id: 'বিল', name: 'বিল ও ইউটিলিটি', icon: 'ph-lightning', color: '#fdcb6e' },
-  { id: 'যাতায়াত', name: 'যাতায়াত', icon: 'ph-bus', color: '#6c5ce7' },
-  { id: 'মেডিকেল', name: 'স্বাস্থ্য / ঔষধ', icon: 'ph-first-aid', color: '#d63031' },
-  { id: 'অন্যান্য', name: 'অন্যান্য (Custom)', icon: 'ph-tag', color: '#a29bfe' }
+  { id: 'Groceries', name: 'Groceries', icon: 'ph-shopping-cart', color: '#00b894' },
+  { id: 'Shopping', name: 'Shopping', icon: 'ph-bag', color: '#e84393' },
+  { id: 'Food & Dining', name: 'Food & Dining', icon: 'ph-pizza', color: '#e17055' },
+  { id: 'Books & Education', name: 'Books & Learning', icon: 'ph-book-open', color: '#0984e3' },
+  { id: 'Bills & Utilities', name: 'Bills & Utilities', icon: 'ph-lightning', color: '#fdcb6e' },
+  { id: 'Transport & Travel', name: 'Transport & Travel', icon: 'ph-bus', color: '#6c5ce7' },
+  { id: 'Health & Medical', name: 'Health & Medical', icon: 'ph-first-aid', color: '#d63031' },
+  { id: 'Other', name: 'Other (Custom)', icon: 'ph-tag', color: '#a29bfe' }
 ];
 
 export default function NewExpenseModal({ 
@@ -22,9 +22,9 @@ export default function NewExpenseModal({
   currentUser, 
   members = [],
   groups = [],
-  initialMode = 'GROUP'
+  initialMode = 'PERSONAL'
 }) {
-  const [expenseType, setExpenseType] = useState(initialMode);
+  const [expenseType, setExpenseType] = useState(initialMode || 'PERSONAL');
   const [selectedGroupId, setSelectedGroupId] = useState(currentGroupId || (groups.length > 0 ? groups[0].id : '1'));
   
   const [form, setForm] = useState({
@@ -32,8 +32,8 @@ export default function NewExpenseModal({
     amount: '',
     notes: '',
     selectedPayerId: currentUser ? currentUser.id : (members.length > 0 ? members[0].id : ''),
-    selectedCategory: 'FOOD',
-    personalCategory: 'বাজার',
+    selectedCategory: '',
+    personalCategory: '',
     customCategoryName: '',
     isEqualSplit: true,
     selectedMembers: new Set(members.map(m => m.id)),
@@ -43,20 +43,34 @@ export default function NewExpenseModal({
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const resetForm = () => {
+    setForm({
+      title: '',
+      amount: '',
+      notes: '',
+      selectedPayerId: currentUser ? currentUser.id : (members.length > 0 ? members[0].id : ''),
+      selectedCategory: '',
+      personalCategory: '',
+      customCategoryName: '',
+      isEqualSplit: true,
+      selectedMembers: new Set(members.map(m => m.id)),
+      customAmounts: {}
+    });
+    setError('');
+  };
+
   useEffect(() => {
     if (isOpen) {
-      const defaultMode = groups.length === 0 ? 'PERSONAL' : initialMode;
-      setExpenseType(defaultMode);
+      setExpenseType(initialMode || 'PERSONAL');
       setSelectedGroupId(currentGroupId || (groups.length > 0 ? groups[0].id : '1'));
-      setForm(prev => ({
-        ...prev,
-        selectedPayerId: currentUser ? currentUser.id : (members.length > 0 ? members[0].id : ''),
-        selectedMembers: new Set(members.map(m => m.id)),
-        customAmounts: {}
-      }));
-      setError('');
+      resetForm();
     }
-  }, [isOpen, initialMode, currentGroupId, currentUser, members, groups]);
+  }, [isOpen, initialMode, currentGroupId]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -79,12 +93,14 @@ export default function NewExpenseModal({
 
     try {
       if (expenseType === 'PERSONAL') {
-        // Handle Personal Expense
-        let categoryName = form.personalCategory;
-        if (categoryName === 'অন্যান্য' && form.customCategoryName.trim()) {
+        // Handle Personal Expense - Category is completely optional
+        let categoryName = form.personalCategory || form.customCategoryName.trim() || 'General';
+
+        if (categoryName === 'Other' && form.customCategoryName.trim()) {
           categoryName = form.customCategoryName.trim();
         }
 
+        const activeCurrency = localStorage.getItem('splitup_currency') || 'BDT';
         const personalExpense = {
           userId: currentUser?.id,
           userName: currentUser?.name || 'User',
@@ -92,21 +108,26 @@ export default function NewExpenseModal({
           amount: amountValue,
           category: categoryName,
           notes: form.notes.trim(),
-          currencyCode: 'BDT',
+          currencyCode: activeCurrency,
           date: Date.now()
         };
 
         if (isTursoConfigured) {
           await tursoAddPersonalExpense(personalExpense);
+        } else {
+          LocalDatabase.addPersonalExpense(personalExpense);
         }
 
         setIsSubmitting(false);
+        resetForm();
         onSuccess?.();
         onClose();
         return;
       }
 
-      // Handle Group Expense
+      // Handle Group Expense - Category is optional (defaults to OTHER)
+      const selectedCategory = form.selectedCategory || 'OTHER';
+
       if (form.selectedMembers.size === 0) {
         setError('Please select at least one member.');
         setIsSubmitting(false);
@@ -141,7 +162,7 @@ export default function NewExpenseModal({
         }
 
         if (Math.abs(totalShares - amountValue) > 0.05) {
-          setError(`Custom shares total (৳${totalShares.toFixed(2)}) must equal the total amount (৳${amountValue.toFixed(2)}).`);
+          setError(`Custom shares total (${totalShares.toFixed(2)}) must equal the total amount (${amountValue.toFixed(2)}).`);
           setIsSubmitting(false);
           return;
         }
@@ -170,6 +191,7 @@ export default function NewExpenseModal({
       }
 
       setIsSubmitting(false);
+      resetForm();
       onSuccess?.();
       onClose();
     } catch (err) {
@@ -190,19 +212,19 @@ export default function NewExpenseModal({
   };
 
   const activeGroupMembers = members.filter(m => String(m.groupId) === String(selectedGroupId));
-  const displayMembers = activeGroupMembers.length > 0 ? activeGroupMembers : members;
+  const displayMembers = activeGroupMembers.length > 0 ? activeGroupMembers : (groups.length > 0 ? [] : (currentUser ? [currentUser] : []));
 
   return (
-    <div className="modal-overlay animate-fade-in" onClick={onClose}>
+    <div className="modal-overlay animate-fade-in" onClick={handleClose}>
       <div className="modal-content glass-panel" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
         <div className="modal-header">
           <div>
             <h2>New Expense</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '2px 0 0' }}>
-              {expenseType === 'PERSONAL' ? 'ব্যক্তিগত খরচের হিসাব রাখুন' : 'গ্রুপের মেম্বারদের মাঝে ভাগ করুন'}
+              {expenseType === 'PERSONAL' ? 'Track your individual daily spending' : 'Split equally or unequally with group members'}
             </p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} style={{ width: '32px', height: '32px' }}>
+          <button type="button" className="btn-icon" onClick={handleClose} style={{ width: '32px', height: '32px' }}>
             <i className="ph ph-x"></i>
           </button>
         </div>
@@ -216,7 +238,7 @@ export default function NewExpenseModal({
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <i className="ph ph-user"></i>
-            <span>Personal (ব্যক্তিগত)</span>
+            <span>Personal Tracker</span>
           </button>
           <button 
             type="button" 
@@ -237,23 +259,26 @@ export default function NewExpenseModal({
             <div className="form-group">
               <label>Select Group</label>
               {groups.length > 0 ? (
-                <select 
-                  value={selectedGroupId}
-                  onChange={e => {
-                    const newGid = e.target.value;
-                    setSelectedGroupId(newGid);
-                    const groupMems = members.filter(m => String(m.groupId) === String(newGid));
-                    setForm(prev => ({
-                      ...prev,
-                      selectedMembers: new Set(groupMems.map(m => m.id)),
-                      selectedPayerId: groupMems[0]?.id || currentUser?.id
-                    }));
-                  }}
-                >
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                <div className="select-wrapper">
+                  <select 
+                    value={selectedGroupId}
+                    onChange={e => {
+                      const newGid = e.target.value;
+                      setSelectedGroupId(newGid);
+                      const groupMems = members.filter(m => String(m.groupId) === String(newGid));
+                      setForm(prev => ({
+                        ...prev,
+                        selectedMembers: new Set(groupMems.map(m => m.id)),
+                        selectedPayerId: groupMems[0]?.id || currentUser?.id
+                      }));
+                    }}
+                  >
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>👥 {g.name}</option>
+                    ))}
+                  </select>
+                  <i className="ph ph-caret-down select-arrow"></i>
+                </div>
               ) : (
                 <div style={{ background: 'rgba(253, 203, 110, 0.1)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--warning)' }}>
                   <i className="ph ph-info" style={{ marginRight: '6px' }}></i>
@@ -268,7 +293,7 @@ export default function NewExpenseModal({
             <label>Expense Title / Description</label>
             <input 
               type="text" 
-              placeholder={expenseType === 'PERSONAL' ? "e.g., কাঁচাবাজার, বই কেনা, শপিং" : "e.g., Dinner, Cox's Bazar Hotel"}
+              placeholder={expenseType === 'PERSONAL' ? "e.g., Grocery shopping, Books, Electronics" : "e.g., Dinner, Cox's Bazar Hotel"}
               value={form.title} 
               onChange={e => setForm({...form, title: e.target.value})} 
               required
@@ -278,31 +303,43 @@ export default function NewExpenseModal({
           {/* Amount & Category */}
           <div className="form-row">
             <div className="form-group">
-              <label>Amount (BDT ৳)</label>
+              <label>Amount</label>
               <input 
                 type="number" 
                 step="0.01"
+                min="0"
                 placeholder="0.00"
                 value={form.amount} 
-                onChange={e => setForm({...form, amount: e.target.value})} 
+                onKeyDown={e => {
+                  if (['+', '-', 'e', 'E'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+                onChange={e => {
+                  const val = e.target.value.replace(/[+\-eE]/g, '');
+                  setForm({...form, amount: val});
+                }} 
                 required
               />
             </div>
-            
-            {expenseType === 'GROUP' ? (
+                       {expenseType === 'GROUP' ? (
               <div className="form-group">
-                <label>Category</label>
-                <select 
-                  value={form.selectedCategory}
-                  onChange={e => setForm({...form, selectedCategory: e.target.value})}
-                >
-                  <option value="FOOD">Food & Dining</option>
-                  <option value="TRAVEL">Travel & Transport</option>
-                  <option value="GROCERIES">Groceries / বাজার</option>
-                  <option value="ENTERTAINMENT">Entertainment</option>
-                  <option value="UTILITIES">Utilities & Bills</option>
-                  <option value="OTHER">Other</option>
-                </select>
+                <label>Category (Optional)</label>
+                <div className="select-wrapper">
+                  <select 
+                    value={form.selectedCategory}
+                    onChange={e => setForm({...form, selectedCategory: e.target.value})}
+                  >
+                    <option value="">General / Other (Optional)</option>
+                    <option value="FOOD">🍽️ Food & Dining</option>
+                    <option value="TRAVEL">✈️ Travel & Transport</option>
+                    <option value="GROCERIES">🛒 Groceries</option>
+                    <option value="ENTERTAINMENT">🎮 Entertainment</option>
+                    <option value="UTILITIES">⚡ Utilities & Bills</option>
+                    <option value="OTHER">🏷️ Other</option>
+                  </select>
+                  <i className="ph ph-caret-down select-arrow"></i>
+                </div>
               </div>
             ) : null}
           </div>
@@ -310,7 +347,7 @@ export default function NewExpenseModal({
           {/* Personal Expense Specific: Category Badges */}
           {expenseType === 'PERSONAL' && (
             <div className="form-group">
-              <label>Category (ক্যাটাগরি সিলেক্ট করুন)</label>
+              <label>Category (Optional)</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '4px' }}>
                 {PERSONAL_CATEGORIES.map(cat => {
                   const isSelected = form.personalCategory === cat.id;
@@ -318,7 +355,7 @@ export default function NewExpenseModal({
                     <button
                       type="button"
                       key={cat.id}
-                      onClick={() => setForm({ ...form, personalCategory: cat.id })}
+                      onClick={() => setForm({ ...form, personalCategory: isSelected ? '' : cat.id })}
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -343,10 +380,10 @@ export default function NewExpenseModal({
                 })}
               </div>
 
-              {form.personalCategory === 'অন্যান্য' && (
+              {form.personalCategory === 'Other' && (
                 <input 
-                  type="text"
-                  placeholder="Custom category name (যেমন: টিউশন ফি, গেমস)"
+                  type="text" 
+                  placeholder="Custom category name (e.g., Tuition, Subscriptions)"
                   value={form.customCategoryName}
                   onChange={e => setForm({ ...form, customCategoryName: e.target.value })}
                   style={{ marginTop: '10px' }}
@@ -360,7 +397,7 @@ export default function NewExpenseModal({
             <label>Notes / Memo (Optional)</label>
             <input 
               type="text" 
-              placeholder="e.g., স্বপ্ন সুপারশপ থেকে কেনা"
+              placeholder="e.g., Purchased from supermarket"
               value={form.notes} 
               onChange={e => setForm({...form, notes: e.target.value})} 
             />
@@ -371,16 +408,19 @@ export default function NewExpenseModal({
             <>
               <div className="form-group">
                 <label>Paid by</label>
-                <select 
-                  value={form.selectedPayerId}
-                  onChange={e => setForm({...form, selectedPayerId: e.target.value})}
-                >
-                  {displayMembers.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} {m.id === currentUser?.id ? '(You)' : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="select-wrapper">
+                  <select 
+                    value={form.selectedPayerId}
+                    onChange={e => setForm({...form, selectedPayerId: e.target.value})}
+                  >
+                    {displayMembers.map(m => (
+                      <option key={m.id} value={m.id}>
+                        👤 {m.name} {m.id === currentUser?.id ? '(You)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <i className="ph ph-caret-down select-arrow"></i>
+                </div>
               </div>
 
               <div className="split-options">
@@ -419,15 +459,22 @@ export default function NewExpenseModal({
                       <input 
                         type="number" 
                         step="0.01" 
+                        min="0"
                         placeholder="0.00"
                         className="custom-amount-input"
                         value={form.customAmounts[m.id] || ''}
+                        onKeyDown={e => {
+                          if (['+', '-', 'e', 'E'].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
                         onChange={(e) => {
+                          const val = e.target.value.replace(/[+\-eE]/g, '');
                           setForm({
                             ...form, 
                             customAmounts: {
                               ...form.customAmounts, 
-                              [m.id]: e.target.value
+                              [m.id]: val
                             }
                           });
                         }}
@@ -440,7 +487,7 @@ export default function NewExpenseModal({
           )}
 
           <div className="modal-footer" style={{ marginTop: '16px' }}>
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
+            <button type="button" className="btn-secondary" onClick={handleClose} disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isSubmitting}>

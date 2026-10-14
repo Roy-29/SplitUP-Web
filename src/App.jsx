@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { LocalDatabase } from './store/db'
 import { calculateBalances, simplifyDebts, getTotalGroupBalance } from './lib/BalanceCalculator'
@@ -20,6 +20,8 @@ import {
   tursoGetGroups, 
   tursoGetPersonalExpenses,
   tursoDeleteExpense,
+  tursoDeleteSettlement,
+  tursoDeleteGroup,
   initTursoTables, 
   tursoSignOut 
 } from './lib/turso';
@@ -49,10 +51,26 @@ function App() {
   })
   
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [expenseModalMode, setExpenseModalMode] = useState('GROUP');
+  const [expenseModalMode, setExpenseModalMode] = useState('PERSONAL');
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
-  
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+    if (isNotificationsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isNotificationsOpen]);
+
   // Theme state
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('splitup_theme') || 'dark';
@@ -89,7 +107,7 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const openExpenseModal = (mode = 'GROUP') => {
+  const openExpenseModal = (mode = 'PERSONAL') => {
     setExpenseModalMode(mode);
     setIsExpenseModalOpen(true);
   };
@@ -118,47 +136,56 @@ function App() {
           tursoGetExpenses(),
           tursoGetSettlements(),
           tursoGetGroups(loggedUser),
-          tursoGetPersonalExpenses(loggedUser.id)
+          tursoGetPersonalExpenses(loggedUser)
         ]);
 
-        members = tMembers || [];
-        expenses = tExpenses || [];
-        settlements = tSettlements || [];
-        personalExpenses = tPersonal || [];
         mockGroups = (tGroups || []).map(g => ({
           id: g.id,
           name: g.name,
           joinCode: g.joinCode,
-          memberCount: members.filter(m => String(m.groupId) === String(g.id)).length,
-          expenseCount: expenses.filter(e => String(e.groupId) === String(g.id)).length,
-          totalExpense: expenses.filter(e => String(e.groupId) === String(g.id)).reduce((s, e) => s + e.amount, 0),
-          lastExpenseDate: expenses.filter(e => String(e.groupId) === String(g.id)).map(e => e.date).sort((a,b)=>b-a)[0] || g.createdAt
+          memberCount: (tMembers || []).filter(m => String(m.groupId) === String(g.id)).length,
+          expenseCount: (tExpenses || []).filter(e => String(e.groupId) === String(g.id)).length,
+          totalExpense: (tExpenses || []).filter(e => String(e.groupId) === String(g.id)).reduce((s, e) => s + e.amount, 0),
+          lastExpenseDate: (tExpenses || []).filter(e => String(e.groupId) === String(g.id)).map(e => e.date).sort((a,b)=>b-a)[0] || g.createdAt
         }));
+
+        const userGroupIds = new Set(mockGroups.map(g => String(g.id)));
+
+        // Strictly isolate members, expenses, and settlements to the user's actual groups
+        members = (tMembers || []).filter(m => userGroupIds.has(String(m.groupId)));
+        expenses = (tExpenses || []).filter(e => userGroupIds.has(String(e.groupId)));
+        settlements = (tSettlements || []).filter(s => userGroupIds.has(String(s.groupId)));
+        personalExpenses = tPersonal || [];
       } catch (error) {
         console.warn("Turso query failed, falling back to local database. Reason:", error.message);
+        personalExpenses = LocalDatabase.getPersonalExpenses();
       }
-    }
-
-    // Link logged-in user to members
-    let memberMatch = members.find(m => String(m.id) === String(loggedUser.id) || m.email === loggedUser.email || String(m.userId) === String(loggedUser.id));
-    if (!memberMatch) {
-      memberMatch = {
-        id: loggedUser.id,
-        name: loggedUser.name,
-        email: loggedUser.email,
-        groupId: mockGroups.length > 0 ? mockGroups[0].id : '1',
-        userId: loggedUser.id
-      };
-      members = [memberMatch, ...members];
     }
 
     const currentUser = {
       ...loggedUser,
-      id: memberMatch.id,
-      name: loggedUser.name || memberMatch.name,
-      email: loggedUser.email || memberMatch.email,
+      id: loggedUser.id,
+      name: loggedUser.name,
+      email: loggedUser.email,
       avatar: loggedUser.avatar || null
     };
+
+    // If user has groups, ensure currentUser is included in members if not already there
+    if (mockGroups.length > 0) {
+      const userInMembers = members.some(m => String(m.id) === String(currentUser.id) || String(m.userId) === String(currentUser.id) || (m.email && m.email.toLowerCase() === currentUser.email?.toLowerCase()));
+      if (!userInMembers) {
+        members = [{
+          id: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email,
+          groupId: mockGroups[0].id,
+          userId: currentUser.id
+        }, ...members];
+      }
+    } else {
+      // If user has NO groups created, members should be empty so no other names appear!
+      members = [];
+    }
 
     // Run the domain logic!
     const balances = calculateBalances(members, expenses, settlements)
@@ -248,7 +275,11 @@ function App() {
     <div className="app-container">
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="brand animate-fade-in">
+        <NavLink 
+          to="/dashboard" 
+          className="brand animate-fade-in" 
+          title="Go to Dashboard"
+        >
           <div className="brand-icon">
             <i className="ph ph-intersect"></i>
           </div>
@@ -272,7 +303,7 @@ function App() {
               {isTursoConfigured ? 'Turso Cloud' : 'Turso Setup'}
             </span>
           </div>
-        </div>
+        </NavLink>
 
         <nav className="nav-links">
           <NavLink 
@@ -357,9 +388,118 @@ function App() {
               <button className="btn-icon" onClick={toggleTheme} title="Toggle Theme">
                 {theme === 'dark' ? <i className="ph ph-sun"></i> : <i className="ph ph-moon"></i>}
               </button>
-              <button className="btn-icon" onClick={() => alert("No new notifications at this moment!")} title="Notifications">
-                <i className="ph ph-bell"></i>
-              </button>
+              
+              {/* Notification Popover Dropdown */}
+              <div className="notification-wrapper" ref={notificationRef}>
+                <button 
+                  className={`btn-icon notification-trigger-btn ${isNotificationsOpen ? 'active' : ''}`} 
+                  onClick={() => setIsNotificationsOpen(prev => !prev)} 
+                  title="Notifications"
+                  aria-label="Open notifications"
+                >
+                  <i className="ph ph-bell"></i>
+                  <span className="notification-dot"></span>
+                </button>
+
+                {isNotificationsOpen && (
+                  <div className="notification-dropdown">
+                    <div className="notification-dropdown-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>Notifications</h4>
+                        <span className="notification-count-tag">Live</span>
+                      </div>
+                      <button 
+                        type="button" 
+                        className="notification-close-btn"
+                        onClick={() => setIsNotificationsOpen(false)}
+                      >
+                        <i className="ph ph-x"></i>
+                      </button>
+                    </div>
+
+                    <div className="notification-list">
+                      {/* Turso Cloud Sync Status */}
+                      <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/settings'); }}>
+                        <div className={`notification-icon-box ${isTursoConfigured ? 'success' : 'warning'}`}>
+                          <i className={`ph ${isTursoConfigured ? 'ph-cloud-check' : 'ph-cloud-slash'}`}></i>
+                        </div>
+                        <div className="notification-body">
+                          <div className="notification-body-header">
+                            <span className="notification-item-title">
+                              {isTursoConfigured ? 'Turso Cloud Synced' : 'Offline Cache Mode'}
+                            </span>
+                            <span className="notification-time">Sync</span>
+                          </div>
+                          <p className="notification-item-desc">
+                            {isTursoConfigured 
+                              ? 'All shared groups, debts, and balances are securely stored in the cloud.' 
+                              : 'Connected to local storage. Tap to configure Turso Cloud in Settings.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Financial Balance Summary */}
+                      <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/dashboard'); }}>
+                        <div className={`notification-icon-box ${myBalance?.toReceive > 0 ? 'info' : (myBalance?.owed > 0 ? 'warning' : 'success')}`}>
+                          <i className={`ph ${myBalance?.toReceive > 0 ? 'ph-hand-coins' : (myBalance?.owed > 0 ? 'ph-wallet' : 'ph-check-circle')}`}></i>
+                        </div>
+                        <div className="notification-body">
+                          <div className="notification-body-header">
+                            <span className="notification-item-title">
+                              {myBalance?.toReceive > 0 
+                                ? 'Receivable Reminder' 
+                                : (myBalance?.owed > 0 ? 'Pending Payables' : 'Finances Balanced')}
+                            </span>
+                            <span className="notification-time">Balance</span>
+                          </div>
+                          <p className="notification-item-desc">
+                            {myBalance?.toReceive > 0 
+                              ? `You have a total of ${formatCurrency(myBalance.toReceive)} to receive from your friends.`
+                              : (myBalance?.owed > 0 
+                                ? `You have an outstanding balance of ${formatCurrency(myBalance.owed)} across your groups.`
+                                : 'All debts settled! You have no outstanding dues.')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Latest Activity Notice */}
+                      {activities && activities.length > 0 && (
+                        <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/expenses'); }}>
+                          <div className="notification-icon-box accent">
+                            <i className="ph ph-receipt"></i>
+                          </div>
+                          <div className="notification-body">
+                            <div className="notification-body-header">
+                              <span className="notification-item-title" style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {activities[0].title || 'Recent Transaction'}
+                              </span>
+                              <span className="notification-time">Latest</span>
+                            </div>
+                            <p className="notification-item-desc">
+                              {activities[0].type === 'EXPENSE' ? 'Expense' : 'Settlement'} of {formatCurrency(activities[0].amount)} by {activities[0].payerName || 'Member'}.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="notification-dropdown-footer">
+                      <button 
+                        type="button" 
+                        className="notification-view-all"
+                        onClick={() => {
+                          setIsNotificationsOpen(false);
+                          navigate('/expenses');
+                        }}
+                      >
+                        <span>View All Transactions</span>
+                        <i className="ph ph-arrow-right"></i>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button className="btn-primary" onClick={() => openExpenseModal('PERSONAL')}>
                 <i className="ph ph-plus"></i>
                 <span>New Expense</span>
@@ -392,6 +532,21 @@ function App() {
               groups={groups} 
               onNewGroupClick={() => setIsNewGroupModalOpen(true)} 
               currentUser={currentUser}
+              currencyCode={currencyCode}
+              onDeleteGroup={async (groupId) => {
+                setData(prev => ({
+                  ...prev,
+                  groups: (prev.groups || []).filter(g => String(g.id) !== String(groupId)),
+                  expenses: (prev.expenses || []).filter(e => String(e.groupId) !== String(groupId)),
+                  activities: (prev.activities || []).filter(a => String(a.data?.groupId) !== String(groupId))
+                }));
+                try {
+                  await tursoDeleteGroup(groupId);
+                } catch (err) {
+                  console.error("Failed to delete group:", err);
+                }
+                loadData();
+              }}
               onRefreshData={loadData}
             />
           } />
@@ -399,9 +554,35 @@ function App() {
             <ExpensesView 
               activities={activities} 
               personalExpenses={personalExpenses}
+              currencyCode={currencyCode}
               onNewExpenseClick={openExpenseModal}
               onDeleteExpense={async (expenseId) => {
-                await tursoDeleteExpense(expenseId);
+                setData(prev => ({
+                  ...prev,
+                  personalExpenses: (prev.personalExpenses || []).filter(e => String(e.id) !== String(expenseId)),
+                  expenses: (prev.expenses || []).filter(e => String(e.id) !== String(expenseId)),
+                  activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(expenseId))
+                }));
+                try {
+                  await tursoDeleteExpense(expenseId);
+                  LocalDatabase.deleteExpense(expenseId);
+                } catch (err) {
+                  console.error("Failed to delete expense:", err);
+                }
+                loadData();
+              }}
+              onDeleteSettlement={async (settlementId) => {
+                setData(prev => ({
+                  ...prev,
+                  settlements: (prev.settlements || []).filter(s => String(s.id) !== String(settlementId)),
+                  activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(settlementId))
+                }));
+                try {
+                  await tursoDeleteSettlement(settlementId);
+                  LocalDatabase.deleteSettlement(settlementId);
+                } catch (err) {
+                  console.error("Failed to delete settlement:", err);
+                }
                 loadData();
               }}
             />

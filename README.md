@@ -31,7 +31,7 @@ Whether on desktop or mobile, SplitUP provides real-time cloud synchronization, 
 - **Settle Up Modal**: Record settlements directly (Cash, UPI/MFS, Card) with instantaneous balance updates.
 
 ### 💳 Personal Wallet & Expense Tracker
-- **Custom Categorization**: Keep track of personal expenditures like groceries (`বাজার`), shopping (`শপিং`), food (`খাবার`), books (`বই`), utilities, and bills.
+- **Custom Categorization**: Keep track of personal expenditures like groceries, shopping, food & dining, books, utilities, and bills.
 - **Independent Tracking**: Keep personal finances separate from group balances while viewing unified summaries.
 
 ### 📊 Analytics & Visual Insights

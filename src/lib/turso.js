@@ -118,13 +118,6 @@ export async function tursoSignUp(name, email, password, shortProfile = '') {
     args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), now]
   });
 
-  // Ensure user is also registered as a member in the default group
-  const memberId = userId;
-  await tursoClient.execute({
-    sql: 'INSERT OR IGNORE INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-    args: [memberId, name.trim(), normalizedEmail, '1', userId]
-  });
-
   const user = {
     id: userId,
     name: name.trim(),
@@ -165,18 +158,6 @@ export async function tursoSignIn(email, password) {
     email: String(userRow.email),
     shortProfile: userRow.shortProfile ? String(userRow.shortProfile) : ''
   };
-
-  // Ensure user is present in group members
-  const memberCheck = await tursoClient.execute({
-    sql: 'SELECT id FROM members WHERE userId = ? OR email = ? LIMIT 1;',
-    args: [user.id, user.email]
-  });
-  if (memberCheck.rows.length === 0) {
-    await tursoClient.execute({
-      sql: 'INSERT INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-      args: [user.id, user.name, user.email, '1', user.id]
-    });
-  }
 
   localStorage.setItem('splitup_turso_user', JSON.stringify(user));
   return user;
@@ -263,7 +244,7 @@ export async function tursoGetExpenses(groupId = null) {
 
   const sql = groupId 
     ? 'SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId = ? ORDER BY date DESC;' 
-    : 'SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId != "personal" ORDER BY date DESC;';
+    : "SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId != 'personal' ORDER BY date DESC;";
   const args = groupId ? [String(groupId)] : [];
 
   const res = await tursoClient.execute({ sql, args });
@@ -324,20 +305,31 @@ export async function tursoAddExpense(expense) {
 
 // ----------------- Personal Expenses Operations -----------------
 
-export async function tursoGetPersonalExpenses(userId) {
-  if (!tursoClient || !userId) return [];
+export async function tursoGetPersonalExpenses(userOrId) {
+  if (!tursoClient || !userOrId) return [];
   await initTursoTables();
 
-  const res = await tursoClient.execute({
-    sql: 'SELECT * FROM expenses WHERE (isPersonal = 1 OR groupId = "personal") AND userId = ? ORDER BY date DESC;',
-    args: [String(userId)]
-  });
+  const userId = typeof userOrId === 'object' ? userOrId?.id : userOrId;
+  const userEmail = typeof userOrId === 'object' ? userOrId?.email : null;
+
+  let sql = "SELECT * FROM expenses WHERE (isPersonal = 1 OR groupId = 'personal') AND (userId = ?";
+  const args = [String(userId)];
+
+  if (userEmail) {
+    sql += " OR userId IN (SELECT id FROM users WHERE LOWER(email) = LOWER(?))";
+    args.push(String(userEmail));
+    sql += " OR userId IN (SELECT id FROM members WHERE LOWER(email) = LOWER(?))";
+    args.push(String(userEmail));
+  }
+  sql += ") ORDER BY date DESC;";
+
+  const res = await tursoClient.execute({ sql, args });
 
   return res.rows.map(row => ({
     id: String(row.id),
     title: String(row.title),
     amount: Number(row.amount),
-    category: row.category ? String(row.category) : 'বাজার',
+    category: row.category ? String(row.category) : 'General',
     notes: row.notes ? String(row.notes) : '',
     date: Number(row.date),
     currencyCode: row.currencyCode ? String(row.currencyCode) : 'BDT',
@@ -364,7 +356,7 @@ export async function tursoAddPersonalExpense(expense) {
       expense.userName || 'User',
       String(expense.userId),
       Number(expense.date || Date.now()),
-      expense.category || 'অন্যান্য',
+      expense.category || 'Other',
       expense.currencyCode || 'BDT',
       expense.notes || '',
       '[]'
@@ -429,6 +421,15 @@ export async function tursoAddSettlement(settlement) {
   return { ...settlement, id };
 }
 
+export async function tursoDeleteSettlement(settlementId) {
+  if (!tursoClient || !settlementId) return;
+  await initTursoTables();
+  await tursoClient.execute({
+    sql: 'DELETE FROM settlements WHERE id = ?;',
+    args: [String(settlementId)]
+  });
+}
+
 // ----------------- Group Operations with Join Code -----------------
 
 export async function tursoGetGroups(user = null) {
@@ -472,6 +473,18 @@ export async function tursoCreateGroup(name, createdBy = 'user') {
   });
 
   return { id, name: name.trim(), createdBy, joinCode, createdAt: now };
+}
+
+export async function tursoDeleteGroup(groupId) {
+  if (!tursoClient || !groupId) return;
+  await initTursoTables();
+  const gid = String(groupId);
+  await tursoClient.batch([
+    { sql: 'DELETE FROM groups WHERE id = ?;', args: [gid] },
+    { sql: 'DELETE FROM members WHERE groupId = ?;', args: [gid] },
+    { sql: 'DELETE FROM expenses WHERE groupId = ?;', args: [gid] },
+    { sql: 'DELETE FROM settlements WHERE groupId = ?;', args: [gid] }
+  ]);
 }
 
 export async function tursoJoinGroupByCode(joinCode, currentUser) {
@@ -572,30 +585,14 @@ export async function tursoGoogleSignIn(credentialToken) {
       shortProfile: row.shortProfile ? String(row.shortProfile) : '',
       avatar
     };
-
-    const memberCheck = await tursoClient.execute({
-      sql: 'SELECT id FROM members WHERE userId = ? OR email = ? LIMIT 1;',
-      args: [user.id, user.email]
-    });
-    if (memberCheck.rows.length === 0) {
-      await tursoClient.execute({
-        sql: 'INSERT INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-        args: [user.id, user.name, user.email, '1', user.id]
-      });
-    }
   } else {
-    // New Google user! Register in users and default group members
+    // New Google user! Register in users
     const userId = `usr_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = Date.now();
 
     await tursoClient.execute({
       sql: 'INSERT INTO users (id, name, email, password, shortProfile, createdAt) VALUES (?, ?, ?, ?, ?, ?);',
       args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', now]
-    });
-
-    await tursoClient.execute({
-      sql: 'INSERT OR IGNORE INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-      args: [userId, name, email, '1', userId]
     });
 
     user = {

@@ -89,42 +89,59 @@ export default function SettleUpModal({ isOpen, onClose, onSuccess, currentGroup
 
                         <div className="form-group">
                             <label>Who are you paying?</label>
-                            <select 
-                                value={form.debtIndex}
-                                onChange={e => {
-                                    const idx = Number(e.target.value);
-                                    setForm({
-                                        debtIndex: idx, 
-                                        amount: myDebts[idx].amount
-                                    });
-                                }}
-                            >
-                                {myDebts.map((d, index) => (
-                                    <option key={index} value={index}>
-                                        {d.toMemberName} (You owe ${d.amount.toFixed(2)})
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="select-wrapper">
+                                <select 
+                                    value={form.debtIndex}
+                                    onChange={e => {
+                                        const idx = Number(e.target.value);
+                                        setForm({
+                                            debtIndex: idx, 
+                                            amount: myDebts[idx].amount
+                                        });
+                                    }}
+                                >
+                                    {myDebts.map((d, index) => (
+                                        <option key={index} value={index}>
+                                            👤 {d.toMemberName} (You owe ${d.amount.toFixed(2)})
+                                        </option>
+                                    ))}
+                                </select>
+                                <i className="ph ph-caret-down select-arrow"></i>
+                            </div>
                         </div>
 
                         <div className="form-group">
-                            <label>Amount ($)</label>
+                            <label>Amount</label>
                             <input 
                                 type="number" 
                                 step="0.01"
+                                min="0"
+                                placeholder="0.00"
                                 value={form.amount} 
-                                onChange={e => setForm({...form, amount: e.target.value})} 
+                                onKeyDown={e => {
+                                    if (['+', '-', 'e', 'E'].includes(e.key)) {
+                                        e.preventDefault();
+                                    }
+                                }}
+                                onChange={e => {
+                                    const val = e.target.value.replace(/[+\-eE]/g, '');
+                                    setForm({...form, amount: val});
+                                }} 
+                                required
                             />
                         </div>
 
                         <div className="form-group">
                             <label>Payment Method</label>
-                            <select defaultValue="CASH">
-                                <option value="CASH">Cash</option>
-                                <option value="VENMO">Venmo</option>
-                                <option value="PAYPAL">PayPal</option>
-                                <option value="BANK_TRANSFER">Bank Transfer</option>
-                            </select>
+                            <div className="select-wrapper">
+                                <select defaultValue="CASH">
+                                    <option value="CASH">💵 Cash</option>
+                                    <option value="VENMO">📱 Mobile / BKash</option>
+                                    <option value="PAYPAL">💳 Online / Card</option>
+                                    <option value="BANK_TRANSFER">🏦 Bank Transfer</option>
+                                </select>
+                                <i className="ph ph-caret-down select-arrow"></i>
+                            </div>
                         </div>
 
                         <div className="modal-footer" style={{ marginTop: '24px' }}>

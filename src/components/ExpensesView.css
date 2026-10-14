@@ -114,6 +114,17 @@
   font-size: 1.1rem;
 }
 
+.delete-btn {
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  border-radius: 8px;
+}
+
+.delete-btn:hover {
+  color: #ff7675 !important;
+  background: rgba(255, 118, 117, 0.14) !important;
+}
+
 @media (max-width: 600px) {
   .expenses-view {
     padding: 20px 16px;

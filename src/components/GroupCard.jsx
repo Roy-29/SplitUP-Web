@@ -20,7 +20,7 @@ export function avatarColorForName(name) {
   return avatarColors[index];
 }
 
-export default function GroupCard({ group, onClick, currencyCode = 'BDT' }) {
+export default function GroupCard({ group, onClick, onDeleteGroup, currencyCode = 'BDT' }) {
   const avatarColor = useMemo(() => avatarColorForName(group.name), [group.name]);
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
 
@@ -61,9 +61,21 @@ export default function GroupCard({ group, onClick, currencyCode = 'BDT' }) {
           <h3 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {group.name}
           </h3>
-          <button className="btn-icon" style={{ width: '32px', height: '32px', border: 'none', background: 'transparent' }} onClick={(e) => { e.stopPropagation(); /* TODO options */ }}>
-            <i className="ph ph-dots-three-vertical"></i>
-          </button>
+          {onDeleteGroup && (
+            <button 
+              className="btn-icon delete-btn" 
+              style={{ width: '32px', height: '32px' }} 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (window.confirm(`Are you sure you want to delete group "${group.name}"?\nAll associated expenses, settlements, and member records will be permanently deleted.`)) {
+                  onDeleteGroup(group.id);
+                }
+              }}
+              title="Delete group"
+            >
+              <i className="ph ph-trash"></i>
+            </button>
+          )}
         </div>
         
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
