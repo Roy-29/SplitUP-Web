@@ -67,6 +67,16 @@ export async function initTursoTables() {
         amount REAL NOT NULL,
         date INTEGER NOT NULL,
         paymentMethod TEXT DEFAULT 'CASH'
+      );`,
+      `CREATE TABLE IF NOT EXISTS personal_topics (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        budget REAL DEFAULT 0,
+        icon TEXT,
+        color TEXT,
+        createdAt INTEGER NOT NULL
       );`
     ]);
 
@@ -79,6 +89,9 @@ export async function initTursoTables() {
     } catch (_) {}
     try {
       await tursoClient.execute("ALTER TABLE expenses ADD COLUMN isPersonal INTEGER DEFAULT 0;");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("ALTER TABLE expenses ADD COLUMN topic TEXT;");
     } catch (_) {}
     try {
       await tursoClient.execute("ALTER TABLE users ADD COLUMN avatar TEXT;");
@@ -368,6 +381,7 @@ export async function tursoGetPersonalExpenses(userOrId) {
     notes: row.notes ? String(row.notes) : '',
     date: Number(row.date),
     currencyCode: row.currencyCode ? String(row.currencyCode) : 'BDT',
+    topic: row.topic ? String(row.topic) : '',
     isPersonal: true
   }));
 }
@@ -379,8 +393,8 @@ export async function tursoAddPersonalExpense(expense) {
   const id = `exp_p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   await tursoClient.execute({
-    sql: `INSERT INTO expenses (id, groupId, userId, isPersonal, title, amount, paidBy, paidByMemberId, date, category, currencyCode, notes, participants)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    sql: `INSERT INTO expenses (id, groupId, userId, isPersonal, title, amount, paidBy, paidByMemberId, date, category, currencyCode, notes, participants, topic)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     args: [
       id,
       'personal',
@@ -394,7 +408,8 @@ export async function tursoAddPersonalExpense(expense) {
       expense.category || 'Other',
       expense.currencyCode || 'BDT',
       expense.notes || '',
-      '[]'
+      '[]',
+      expense.topic ? expense.topic.trim() : ''
     ]
   });
 
@@ -407,6 +422,74 @@ export async function tursoDeleteExpense(expenseId) {
   await tursoClient.execute({
     sql: 'DELETE FROM expenses WHERE id = ?;',
     args: [String(expenseId)]
+  });
+}
+
+// ----------------- Personal Topics Operations -----------------
+
+export async function tursoGetPersonalTopics(userOrId = null) {
+  if (!tursoClient) return [];
+  await initTursoTables();
+
+  const userId = typeof userOrId === 'object' ? userOrId?.id : userOrId;
+  let sql = 'SELECT * FROM personal_topics';
+  const args = [];
+
+  if (userId) {
+    sql += ' WHERE userId = ?';
+    args.push(String(userId));
+  }
+  sql += ' ORDER BY createdAt DESC;';
+
+  try {
+    const res = await tursoClient.execute({ sql, args });
+    return res.rows.map(row => ({
+      id: String(row.id),
+      userId: String(row.userId),
+      name: String(row.name),
+      description: row.description ? String(row.description) : '',
+      budget: Number(row.budget || 0),
+      icon: row.icon ? String(row.icon) : 'ph-folder-simple',
+      color: row.color ? String(row.color) : '#6c5ce7',
+      createdAt: Number(row.createdAt)
+    }));
+  } catch (err) {
+    console.warn("Could not query personal_topics table:", err.message);
+    return [];
+  }
+}
+
+export async function tursoAddPersonalTopic(topic) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const id = topic.id || `tpc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = Date.now();
+
+  await tursoClient.execute({
+    sql: `INSERT INTO personal_topics (id, userId, name, description, budget, icon, color, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    args: [
+      id,
+      String(topic.userId),
+      topic.name.trim(),
+      topic.description ? topic.description.trim() : '',
+      Number(topic.budget || 0),
+      topic.icon || 'ph-folder-simple',
+      topic.color || '#6c5ce7',
+      now
+    ]
+  });
+
+  return { ...topic, id, createdAt: now };
+}
+
+export async function tursoDeletePersonalTopic(topicId) {
+  if (!tursoClient || !topicId) return;
+  await initTursoTables();
+  await tursoClient.execute({
+    sql: 'DELETE FROM personal_topics WHERE id = ?;',
+    args: [String(topicId)]
   });
 }
 

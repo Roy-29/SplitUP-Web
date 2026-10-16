@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { LocalDatabase } from '../store/db';
-import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense } from '../lib/turso';
+import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense, tursoAddPersonalTopic } from '../lib/turso';
 import CustomSelect from './CustomSelect';
 import './Modal.css';
 
@@ -24,7 +24,9 @@ export default function NewExpenseModal({
   currentUser, 
   members = [],
   groups = [],
-  initialMode = 'PERSONAL'
+  personalTopics = [],
+  initialMode = 'PERSONAL',
+  initialTopic = ''
 }) {
   const [expenseType, setExpenseType] = useState(initialMode || 'PERSONAL');
   const [selectedGroupId, setSelectedGroupId] = useState(currentGroupId || (groups.length > 0 ? groups[0].id : '1'));
@@ -37,6 +39,9 @@ export default function NewExpenseModal({
     selectedCategory: '',
     personalCategory: '',
     customCategoryName: '',
+    topic: initialTopic || '',
+    isNewTopic: false,
+    newTopicName: '',
     isEqualSplit: true,
     selectedMembers: new Set(members.map(m => m.id)),
     customAmounts: {}
@@ -54,6 +59,9 @@ export default function NewExpenseModal({
       selectedCategory: '',
       personalCategory: '',
       customCategoryName: '',
+      topic: initialTopic || '',
+      isNewTopic: false,
+      newTopicName: '',
       isEqualSplit: true,
       selectedMembers: new Set(members.map(m => m.id)),
       customAmounts: {}
@@ -67,7 +75,7 @@ export default function NewExpenseModal({
       setSelectedGroupId(currentGroupId || (groups.length > 0 ? groups[0].id : '1'));
       resetForm();
     }
-  }, [isOpen, initialMode, currentGroupId]);
+  }, [isOpen, initialMode, currentGroupId, initialTopic]);
 
   const handleClose = () => {
     resetForm();
@@ -102,6 +110,27 @@ export default function NewExpenseModal({
           categoryName = form.customCategoryName.trim();
         }
 
+        let topicName = '';
+        if (form.isNewTopic && form.newTopicName.trim()) {
+          topicName = form.newTopicName.trim();
+          // Create topic in database in background
+          const topicObj = {
+            userId: currentUser?.id,
+            name: topicName,
+            budget: 0,
+            icon: 'ph-folder-simple',
+            color: '#6c5ce7',
+            createdAt: Date.now()
+          };
+          if (isTursoConfigured) {
+            tursoAddPersonalTopic(topicObj).catch(() => {});
+          } else {
+            LocalDatabase.addPersonalTopic(topicObj);
+          }
+        } else if (form.topic && form.topic !== '__CREATE_NEW__') {
+          topicName = form.topic.trim();
+        }
+
         const activeCurrency = localStorage.getItem('splitup_currency') || 'BDT';
         const personalExpense = {
           userId: currentUser?.id,
@@ -111,6 +140,7 @@ export default function NewExpenseModal({
           category: categoryName,
           notes: form.notes.trim(),
           currencyCode: activeCurrency,
+          topic: topicName,
           date: Date.now()
         };
 
@@ -376,6 +406,49 @@ export default function NewExpenseModal({
                   value={form.customCategoryName}
                   onChange={e => setForm({ ...form, customCategoryName: e.target.value })}
                   style={{ marginTop: '10px' }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Personal Expense Specific: Subject / Topic Picker */}
+          {expenseType === 'PERSONAL' && (
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '0.88rem', fontWeight: 600 }}>
+                  Subject / Topic (ঐচ্ছিক বিষয়/প্রজেক্ট)
+                </label>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Optional</span>
+              </div>
+              <CustomSelect 
+                value={form.topic}
+                onChange={val => {
+                  if (val === '__CREATE_NEW__') {
+                    setForm(prev => ({ ...prev, topic: '__CREATE_NEW__', isNewTopic: true }));
+                  } else {
+                    setForm(prev => ({ ...prev, topic: val, isNewTopic: false }));
+                  }
+                }}
+                options={[
+                  { value: '', label: 'General / No Subject', icon: 'ph-folder' },
+                  ...personalTopics.map(t => ({
+                    value: t.name,
+                    label: `${t.name}${t.budget ? ` (Budget: ${t.budget})` : ''}`,
+                    icon: t.icon || 'ph-folder-simple'
+                  })),
+                  { value: '__CREATE_NEW__', label: '+ Create New Subject...', icon: 'ph-plus' }
+                ]}
+                placeholder="Select a subject (e.g. Tour, Grocery)"
+              />
+
+              {form.isNewTopic && (
+                <input 
+                  type="text" 
+                  placeholder='Type new subject name (e.g., "Tour to Cox&apos;s Bazar")'
+                  value={form.newTopicName}
+                  onChange={e => setForm(prev => ({ ...prev, newTopicName: e.target.value }))}
+                  style={{ marginTop: '8px' }}
+                  autoFocus
                 />
               )}
             </div>

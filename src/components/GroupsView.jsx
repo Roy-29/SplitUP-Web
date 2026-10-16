@@ -2,17 +2,28 @@ import React, { useState } from 'react';
 import GroupCard from './GroupCard';
 import JoinGroupModal from './JoinGroupModal';
 import GroupQrModal from './GroupQrModal';
+import GroupDetailsModal from './GroupDetailsModal';
 
 export default function GroupsView({ 
-  groups, 
+  groups = [], 
+  members = [],
+  expenses = [],
+  settlements = [],
   onNewGroupClick, 
   currentUser, 
   onDeleteGroup, 
   currencyCode = 'BDT', 
-  onRefreshData 
+  onRefreshData,
+  onAddExpense,
+  onSettleUp,
+  onDeleteExpense,
+  onDeleteSettlement,
+  onSelectExpense,
+  initialSelectedGroup = null
 }) {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectedQrGroup, setSelectedQrGroup] = useState(null);
+  const [selectedGroupDetails, setSelectedGroupDetails] = useState(initialSelectedGroup);
 
   return (
     <>
@@ -20,7 +31,9 @@ export default function GroupsView({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '4px' }}>Your Groups</h2>
-            <p style={{ color: 'var(--text-secondary)' }}>Manage your shared expenses and invite friends</p>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Click on any group to view full details, add shared expenses, settle balances, and manage members
+            </p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button className="btn-secondary" onClick={() => setIsJoinModalOpen(true)}>
@@ -43,7 +56,7 @@ export default function GroupsView({
                 onDeleteGroup={onDeleteGroup}
                 onShowQr={setSelectedQrGroup}
                 currencyCode={currencyCode}
-                onClick={() => console.log('Group clicked:', group.id)} 
+                onClick={() => setSelectedGroupDetails(group)} 
               />
             ))}
           </div>
@@ -83,6 +96,36 @@ export default function GroupsView({
         isOpen={!!selectedQrGroup}
         onClose={() => setSelectedQrGroup(null)}
         group={selectedQrGroup}
+      />
+
+      {/* Interactive Group Details Modal */}
+      <GroupDetailsModal
+        isOpen={!!selectedGroupDetails}
+        onClose={() => setSelectedGroupDetails(null)}
+        group={selectedGroupDetails}
+        currentUser={currentUser}
+        members={members}
+        expenses={expenses}
+        settlements={settlements}
+        currencyCode={currencyCode}
+        onAddExpense={(mode, grpId) => {
+          setSelectedGroupDetails(null);
+          onAddExpense?.(mode, grpId);
+        }}
+        onSettleUp={(grpId) => {
+          setSelectedGroupDetails(null);
+          onSettleUp?.(grpId);
+        }}
+        onShowQr={(grp) => {
+          setSelectedQrGroup(grp);
+        }}
+        onDeleteGroup={(grpId) => {
+          setSelectedGroupDetails(null);
+          onDeleteGroup?.(grpId);
+        }}
+        onDeleteExpense={onDeleteExpense}
+        onDeleteSettlement={onDeleteSettlement}
+        onSelectExpense={onSelectExpense}
       />
     </>
   );

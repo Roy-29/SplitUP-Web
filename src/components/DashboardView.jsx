@@ -12,7 +12,9 @@ export default function DashboardView({
   formatCurrencyCompact,
   onNewExpenseClick,
   onNewGroupClick,
-  onSettleUpClick
+  onSettleUpClick,
+  onSelectGroup,
+  onSelectExpense
 }) {
   const navigate = useNavigate();
 
@@ -128,7 +130,8 @@ export default function DashboardView({
                       className="activity-item" 
                       key={`settlement-${s.id || idx}`} 
                       style={{ cursor: 'pointer' }}
-                      onClick={() => navigate('/expenses')}
+                      onClick={() => onSelectExpense ? onSelectExpense(s, 'SETTLEMENT') : navigate('/expenses')}
+                      title="Click to view settlement details"
                     >
                       <div className="activity-icon" style={{ background: '#00b8941A', color: '#00b894', borderRadius: '50%' }}>
                         <i className="ph ph-handshake"></i>
@@ -194,7 +197,8 @@ export default function DashboardView({
                     className="activity-item" 
                     key={`expense-${expense.id || idx}`} 
                     style={{ cursor: 'pointer' }}
-                    onClick={() => navigate('/expenses')}
+                    onClick={() => onSelectExpense ? onSelectExpense(expense, 'EXPENSE') : navigate('/expenses')}
+                    title="Click to view expense details"
                   >
                     <div className="activity-icon" style={{ background: `${categoryColor}1A`, color: categoryColor, borderRadius: '50%' }}>
                       <i className={`ph ${iconClass}`}></i>
@@ -269,7 +273,8 @@ export default function DashboardView({
                   key={group.id} 
                   className="activity-item" 
                   style={{ cursor: 'pointer', marginBottom: '8px' }}
-                  onClick={() => navigate('/groups')}
+                  onClick={() => onSelectGroup ? onSelectGroup(group) : navigate('/groups')}
+                  title="Click to view group details"
                 >
                   <div className="activity-icon" style={{ background: 'rgba(9, 132, 227, 0.15)', color: '#0984e3', borderRadius: '50%' }}>
                     <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>{group.name?.charAt(0) || 'G'}</span>

@@ -40,6 +40,10 @@ export class LocalDatabase {
     return JSON.parse(localStorage.getItem('splitup_personal_expenses') || '[]');
   }
 
+  static getPersonalTopics() {
+    return JSON.parse(localStorage.getItem('splitup_personal_topics') || '[]');
+  }
+
   static addExpense(expense) {
     const expenses = this.getExpenses();
     expenses.push({ ...expense, id: Date.now() });
@@ -50,6 +54,23 @@ export class LocalDatabase {
     const expenses = this.getPersonalExpenses();
     expenses.unshift({ ...expense, id: expense.id || `exp_p_${Date.now()}` });
     localStorage.setItem('splitup_personal_expenses', JSON.stringify(expenses));
+  }
+
+  static addPersonalTopic(topic) {
+    const topics = this.getPersonalTopics();
+    const newTopic = {
+      ...topic,
+      id: topic.id || `tpc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: Date.now()
+    };
+    topics.unshift(newTopic);
+    localStorage.setItem('splitup_personal_topics', JSON.stringify(topics));
+    return newTopic;
+  }
+
+  static deletePersonalTopic(topicId) {
+    const topics = this.getPersonalTopics().filter(t => String(t.id) !== String(topicId));
+    localStorage.setItem('splitup_personal_topics', JSON.stringify(topics));
   }
 
   static addSettlement(settlement) {
@@ -74,8 +95,10 @@ export class LocalDatabase {
     localStorage.removeItem('splitup_members');
     localStorage.removeItem('splitup_expenses');
     localStorage.removeItem('splitup_personal_expenses');
+    localStorage.removeItem('splitup_personal_topics');
     localStorage.removeItem('splitup_settlements');
     // Re-initialize to mock defaults so the app doesn't break
     this.init();
   }
 }
+

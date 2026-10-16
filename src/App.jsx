@@ -11,6 +11,10 @@ import AnalyticsView from './components/AnalyticsView'
 import SettingsView from './components/SettingsView'
 import NewGroupModal from './components/NewGroupModal'
 import JoinGroupModal from './components/JoinGroupModal'
+import GroupDetailsModal from './components/GroupDetailsModal'
+import ExpenseDetailsModal from './components/ExpenseDetailsModal'
+import NewTopicModal from './components/NewTopicModal'
+import TopicDetailsModal from './components/TopicDetailsModal'
 import UserAvatar from './components/UserAvatar'
 import AuthScreen from './components/AuthScreen'
 import { 
@@ -21,6 +25,9 @@ import {
   tursoGetSettlements, 
   tursoGetGroups, 
   tursoGetPersonalExpenses,
+  tursoGetPersonalTopics,
+  tursoAddPersonalTopic,
+  tursoDeletePersonalTopic,
   tursoDeleteExpense,
   tursoDeleteSettlement,
   tursoDeleteGroup,
@@ -67,6 +74,7 @@ function App() {
     members: [],
     expenses: [],
     personalExpenses: [],
+    personalTopics: [],
     settlements: [],
     myBalance: null,
     totalOwed: 0,
@@ -78,8 +86,15 @@ function App() {
   
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseModalMode, setExpenseModalMode] = useState('PERSONAL');
+  const [expenseModalGroupId, setExpenseModalGroupId] = useState(null);
+  const [expenseModalTopic, setExpenseModalTopic] = useState('');
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [settleModalGroupId, setSettleModalGroupId] = useState(null);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
+  const [isNewTopicModalOpen, setIsNewTopicModalOpen] = useState(false);
+  const [selectedGroupForDetails, setSelectedGroupForDetails] = useState(null);
+  const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState(null);
+  const [selectedTopicForDetails, setSelectedTopicForDetails] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef(null);
 
@@ -146,9 +161,16 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const openExpenseModal = (mode = 'PERSONAL') => {
+  const openExpenseModal = (mode = 'PERSONAL', groupId = null, topic = '') => {
     setExpenseModalMode(mode);
+    setExpenseModalGroupId(groupId);
+    setExpenseModalTopic(topic || '');
     setIsExpenseModalOpen(true);
+  };
+
+  const openSettleModal = (groupId = null) => {
+    setSettleModalGroupId(groupId);
+    setIsSettleModalOpen(true);
   };
 
   const loadData = async () => {
@@ -158,6 +180,7 @@ function App() {
     let expenses = LocalDatabase.getExpenses()
     let settlements = LocalDatabase.getSettlements()
     let personalExpenses = []
+    let personalTopics = []
     let mockGroups = [];
 
     // Determine current user strictly from authenticated session
@@ -172,12 +195,13 @@ function App() {
         await initTursoTables();
         const synced = await tursoSyncCurrentUser(loggedUser.id, loggedUser.email);
         if (synced) loggedUser = synced;
-        const [tMembers, tExpenses, tSettlements, tGroups, tPersonal] = await Promise.all([
+        const [tMembers, tExpenses, tSettlements, tGroups, tPersonal, tTopics] = await Promise.all([
           tursoGetMembers(),
           tursoGetExpenses(),
           tursoGetSettlements(),
           tursoGetGroups(loggedUser),
-          tursoGetPersonalExpenses(loggedUser)
+          tursoGetPersonalExpenses(loggedUser),
+          tursoGetPersonalTopics(loggedUser)
         ]);
 
         mockGroups = (tGroups || []).map(g => ({
@@ -197,10 +221,14 @@ function App() {
         expenses = (tExpenses || []).filter(e => userGroupIds.has(String(e.groupId)));
         settlements = (tSettlements || []).filter(s => userGroupIds.has(String(s.groupId)));
         personalExpenses = tPersonal || [];
+        personalTopics = tTopics || [];
       } catch (error) {
         console.warn("Turso query failed, falling back to local database. Reason:", error.message);
         personalExpenses = LocalDatabase.getPersonalExpenses();
+        personalTopics = LocalDatabase.getPersonalTopics();
       }
+    } else {
+      personalTopics = LocalDatabase.getPersonalTopics();
     }
 
     const currentUser = {
@@ -256,6 +284,7 @@ function App() {
       members,
       expenses: expenses.sort((a,b) => b.date - a.date),
       personalExpenses,
+      personalTopics,
       settlements,
       activities,
       myBalance,
@@ -263,7 +292,17 @@ function App() {
       totalToReceive,
       myDebts,
       groups: mockGroups
-    })
+    });
+
+    setSelectedGroupForDetails(prev => {
+      if (!prev) return null;
+      return mockGroups.find(g => String(g.id) === String(prev.id)) || prev;
+    });
+
+    setSelectedTopicForDetails(prev => {
+      if (!prev) return null;
+      return personalTopics.find(t => String(t.id) === String(prev.id)) || prev;
+    });
   }
 
   useEffect(() => {
@@ -317,6 +356,69 @@ function App() {
 
   const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups, totalOwed, totalToReceive } = data;
   const currentActiveGroupId = groups.length > 0 ? groups[0].id : '1';
+
+  const handleDeleteExpense = async (expenseId) => {
+    setData(prev => ({
+      ...prev,
+      personalExpenses: (prev.personalExpenses || []).filter(e => String(e.id) !== String(expenseId)),
+      expenses: (prev.expenses || []).filter(e => String(e.id) !== String(expenseId)),
+      activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(expenseId))
+    }));
+    try {
+      await tursoDeleteExpense(expenseId);
+      LocalDatabase.deleteExpense(expenseId);
+    } catch (err) {
+      console.error("Failed to delete expense:", err);
+    }
+    loadData();
+  };
+
+  const handleDeleteSettlement = async (settlementId) => {
+    setData(prev => ({
+      ...prev,
+      settlements: (prev.settlements || []).filter(s => String(s.id) !== String(settlementId)),
+      activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(settlementId))
+    }));
+    try {
+      await tursoDeleteSettlement(settlementId);
+      LocalDatabase.deleteSettlement(settlementId);
+    } catch (err) {
+      console.error("Failed to delete settlement:", err);
+    }
+    loadData();
+  };
+
+  const handleDeleteGroup = async (groupId) => {
+    setData(prev => ({
+      ...prev,
+      groups: (prev.groups || []).filter(g => String(g.id) !== String(groupId)),
+      expenses: (prev.expenses || []).filter(e => String(e.groupId) !== String(groupId)),
+      activities: (prev.activities || []).filter(a => String(a.data?.groupId) !== String(groupId))
+    }));
+    try {
+      await tursoDeleteGroup(groupId);
+    } catch (err) {
+      console.error("Failed to delete group:", err);
+    }
+    loadData();
+  };
+
+  const handleDeleteTopic = async (topicId) => {
+    setData(prev => ({
+      ...prev,
+      personalTopics: (prev.personalTopics || []).filter(t => String(t.id) !== String(topicId))
+    }));
+    try {
+      if (isTursoConfigured) {
+        await tursoDeletePersonalTopic(topicId);
+      } else {
+        LocalDatabase.deletePersonalTopic(topicId);
+      }
+    } catch (err) {
+      console.error("Failed to delete topic:", err);
+    }
+    loadData();
+  };
 
   const getHeaderInfo = () => {
     if (location.pathname === '/groups') {
@@ -587,67 +689,42 @@ function App() {
               formatCurrencyCompact={formatCurrencyCompact}
               onNewExpenseClick={() => openExpenseModal('PERSONAL')}
               onNewGroupClick={() => setIsNewGroupModalOpen(true)}
-              onSettleUpClick={() => setIsSettleModalOpen(true)}
+              onSettleUpClick={() => openSettleModal()}
+              onSelectGroup={(grp) => setSelectedGroupForDetails(grp)}
+              onSelectExpense={(item, type) => setSelectedExpenseForDetails({ ...item, ...(type ? { type } : {}) })}
             />
           } />
           <Route path="/groups" element={
             <GroupsView 
               groups={groups} 
+              members={data.members}
+              expenses={data.expenses}
+              settlements={data.settlements}
               onNewGroupClick={() => setIsNewGroupModalOpen(true)} 
               currentUser={currentUser}
               currencyCode={currencyCode}
-              onDeleteGroup={async (groupId) => {
-                setData(prev => ({
-                  ...prev,
-                  groups: (prev.groups || []).filter(g => String(g.id) !== String(groupId)),
-                  expenses: (prev.expenses || []).filter(e => String(e.groupId) !== String(groupId)),
-                  activities: (prev.activities || []).filter(a => String(a.data?.groupId) !== String(groupId))
-                }));
-                try {
-                  await tursoDeleteGroup(groupId);
-                } catch (err) {
-                  console.error("Failed to delete group:", err);
-                }
-                loadData();
-              }}
+              onDeleteGroup={handleDeleteGroup}
               onRefreshData={loadData}
+              onAddExpense={(mode, grpId) => openExpenseModal(mode, grpId)}
+              onSettleUp={(grpId) => openSettleModal(grpId)}
+              onDeleteExpense={handleDeleteExpense}
+              onDeleteSettlement={handleDeleteSettlement}
+              onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
             />
           } />
           <Route path="/expenses" element={
             <ExpensesView 
               activities={activities} 
               personalExpenses={personalExpenses}
+              personalTopics={data.personalTopics}
               currencyCode={currencyCode}
-              onNewExpenseClick={openExpenseModal}
-              onDeleteExpense={async (expenseId) => {
-                setData(prev => ({
-                  ...prev,
-                  personalExpenses: (prev.personalExpenses || []).filter(e => String(e.id) !== String(expenseId)),
-                  expenses: (prev.expenses || []).filter(e => String(e.id) !== String(expenseId)),
-                  activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(expenseId))
-                }));
-                try {
-                  await tursoDeleteExpense(expenseId);
-                  LocalDatabase.deleteExpense(expenseId);
-                } catch (err) {
-                  console.error("Failed to delete expense:", err);
-                }
-                loadData();
-              }}
-              onDeleteSettlement={async (settlementId) => {
-                setData(prev => ({
-                  ...prev,
-                  settlements: (prev.settlements || []).filter(s => String(s.id) !== String(settlementId)),
-                  activities: (prev.activities || []).filter(a => String(a.data?.id) !== String(settlementId))
-                }));
-                try {
-                  await tursoDeleteSettlement(settlementId);
-                  LocalDatabase.deleteSettlement(settlementId);
-                } catch (err) {
-                  console.error("Failed to delete settlement:", err);
-                }
-                loadData();
-              }}
+              onNewExpenseClick={(mode, grpId, topic) => openExpenseModal(mode, grpId, topic)}
+              onNewTopicClick={() => setIsNewTopicModalOpen(true)}
+              onSelectExpense={(item, type) => setSelectedExpenseForDetails({ ...item, ...(type ? { type } : {}) })}
+              onSelectTopic={(topic) => setSelectedTopicForDetails(topic)}
+              onDeleteExpense={handleDeleteExpense}
+              onDeleteSettlement={handleDeleteSettlement}
+              onDeleteTopic={handleDeleteTopic}
             />
           } />
           <Route path="/analytics" element={
@@ -688,36 +765,114 @@ function App() {
         </Routes>
       </main>
 
+      {/* New Expense Modal */}
       <NewExpenseModal 
         isOpen={isExpenseModalOpen}
         initialMode={expenseModalMode}
-        onClose={() => setIsExpenseModalOpen(false)}
+        currentGroupId={expenseModalGroupId || currentActiveGroupId}
+        initialTopic={expenseModalTopic}
+        onClose={() => {
+          setIsExpenseModalOpen(false);
+          setExpenseModalGroupId(null);
+          setExpenseModalTopic('');
+        }}
         onSuccess={loadData}
-        currentGroupId={currentActiveGroupId}
         currentUser={currentUser}
         groups={groups}
         members={data.members}
+        personalTopics={data.personalTopics}
       />
 
+      {/* Settle Up Modal */}
       <SettleUpModal 
         isOpen={isSettleModalOpen}
-        onClose={() => setIsSettleModalOpen(false)}
+        onClose={() => {
+          setIsSettleModalOpen(false);
+          setSettleModalGroupId(null);
+        }}
         onSuccess={loadData}
-        currentGroupId={currentActiveGroupId}
+        currentGroupId={settleModalGroupId || currentActiveGroupId}
         currentUser={currentUser}
         suggestedDebts={myDebts}
         currencyCode={currencyCode}
         members={data.members}
       />
 
+      {/* New Group Modal */}
       <NewGroupModal
         isOpen={isNewGroupModalOpen}
         onClose={() => setIsNewGroupModalOpen(false)}
         onSuccess={loadData}
         currentUser={currentUser}
       />
+
+      {/* Expense / Settlement Details Modal */}
+      <ExpenseDetailsModal
+        isOpen={!!selectedExpenseForDetails}
+        onClose={() => setSelectedExpenseForDetails(null)}
+        expense={selectedExpenseForDetails}
+        currentUser={currentUser}
+        currencyCode={currencyCode}
+        onDeleteExpense={handleDeleteExpense}
+        onDeleteSettlement={handleDeleteSettlement}
+        onFilterTopic={(topicName) => {
+          setSelectedExpenseForDetails(null);
+          const found = (data.personalTopics || []).find(t => t.name.toLowerCase() === topicName.toLowerCase());
+          if (found) {
+            setSelectedTopicForDetails(found);
+          }
+        }}
+      />
+
+      {/* New Subject / Topic Modal */}
+      <NewTopicModal
+        isOpen={isNewTopicModalOpen}
+        onClose={() => setIsNewTopicModalOpen(false)}
+        onSuccess={loadData}
+        currentUser={currentUser}
+        currencyCode={currencyCode}
+      />
+
+      {/* Topic / Subject Details Modal */}
+      <TopicDetailsModal
+        isOpen={!!selectedTopicForDetails}
+        onClose={() => setSelectedTopicForDetails(null)}
+        topic={selectedTopicForDetails}
+        expenses={data.personalExpenses}
+        currencyCode={currencyCode}
+        onAddExpense={(topicName) => openExpenseModal('PERSONAL', null, topicName)}
+        onDeleteTopic={handleDeleteTopic}
+        onDeleteExpense={handleDeleteExpense}
+        onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
+      />
+
+      {/* Group Details Modal */}
+      <GroupDetailsModal
+        isOpen={!!selectedGroupForDetails}
+        onClose={() => setSelectedGroupForDetails(null)}
+        group={selectedGroupForDetails}
+        currentUser={currentUser}
+        members={data.members}
+        expenses={data.expenses}
+        settlements={data.settlements}
+        currencyCode={currencyCode}
+        onAddExpense={(mode, grpId) => {
+          setSelectedGroupForDetails(null);
+          openExpenseModal(mode, grpId);
+        }}
+        onSettleUp={(grpId) => {
+          setSelectedGroupForDetails(null);
+          openSettleModal(grpId);
+        }}
+        onShowQr={() => {}}
+        onDeleteGroup={handleDeleteGroup}
+        onDeleteExpense={handleDeleteExpense}
+        onDeleteSettlement={handleDeleteSettlement}
+        onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
+      />
     </div>
   )
 }
 
 export default App
+
