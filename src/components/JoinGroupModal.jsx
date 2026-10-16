@@ -122,8 +122,8 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
     setTorchSupported(false);
   };
 
-  // Start live camera QR scanner
-  const startScanner = async (cameraIndex = 0) => {
+  // Start live camera QR scanner (defaults to rear/back camera on mobile)
+  const startScanner = async (targetCameraOrIndex = null) => {
     setCameraError('');
     setError('');
 
@@ -137,49 +137,108 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
       const html5QrCode = new Html5Qrcode(qrRegionId);
       html5QrCodeRef.current = html5QrCode;
 
-      const cameras = await Html5Qrcode.getCameras();
-      if (!cameras || cameras.length === 0) {
-        setCameraError('No camera found on this device. You can upload an image of the QR code or enter the code manually.');
-        return;
+      // Check available cameras first
+      let cameras = [];
+      try {
+        cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          setAvailableCameras(cameras);
+        }
+      } catch (err) {
+        console.warn('Could not enumerate cameras prior to start:', err);
       }
 
-      setAvailableCameras(cameras);
-      const targetCamera = cameras[cameraIndex % cameras.length];
+      // Determine camera target:
+      // 1. Explicit camera index from Flip Camera
+      // 2. Explicit device ID
+      // 3. Otherwise prioritize the back/rear camera ({ facingMode: "environment" } or back camera label)
+      let cameraConfig;
+      if (typeof targetCameraOrIndex === 'number' && cameras.length > 0) {
+        const selected = cameras[targetCameraOrIndex % cameras.length];
+        cameraConfig = selected.id;
+        setCurrentCameraIndex(targetCameraOrIndex % cameras.length);
+      } else if (typeof targetCameraOrIndex === 'string') {
+        cameraConfig = targetCameraOrIndex;
+      } else {
+        const backIdx = cameras.findIndex((c) =>
+          /back|rear|environment|world|facet/i.test(c.label || '')
+        );
+
+        if (backIdx !== -1) {
+          cameraConfig = cameras[backIdx].id;
+          setCurrentCameraIndex(backIdx);
+        } else {
+          // Default to environment facingMode for mobile rear camera
+          cameraConfig = { facingMode: 'environment' };
+        }
+      }
 
       const config = {
         fps: 10,
         qrbox: { width: 220, height: 220 },
-        aspectRatio: 1.0
+        aspectRatio: 1.0,
       };
 
-      await html5QrCode.start(
-        targetCamera.id,
-        config,
-        (decodedText) => {
-          // Scanned successfully!
-          if (navigator.vibrate) {
-            navigator.vibrate([100, 50, 100]);
-          }
-
-          const parsed = extractJoinCodeFromText(decodedText);
-          if (parsed) {
-            setJoinCode(parsed);
-            stopScanner();
-            executeJoin(parsed);
-          }
-        },
-        () => {
-          // QR Code not in frame yet - silent
+      const onScanSuccess = (decodedText) => {
+        if (navigator.vibrate) {
+          navigator.vibrate([100, 50, 100]);
         }
-      );
+
+        const parsed = extractJoinCodeFromText(decodedText);
+        if (parsed) {
+          setJoinCode(parsed);
+          stopScanner();
+          executeJoin(parsed);
+        }
+      };
+
+      const onScanFailure = () => {
+        // QR Code not in frame yet - silent
+      };
+
+      try {
+        await html5QrCode.start(cameraConfig, config, onScanSuccess, onScanFailure);
+      } catch (startErr) {
+        // Fallback: if facingMode: "environment" fails on a device without a rear camera
+        if (typeof cameraConfig === 'object' && cameraConfig.facingMode) {
+          const fallbackList = cameras.length > 0 ? cameras : await Html5Qrcode.getCameras().catch(() => []);
+          if (fallbackList && fallbackList.length > 0) {
+            await html5QrCode.start(fallbackList[0].id, config, onScanSuccess, onScanFailure);
+          } else {
+            throw startErr;
+          }
+        } else {
+          throw startErr;
+        }
+      }
 
       setIsScanning(true);
+
+      // Post-start: refresh camera list with granted permissions to detect active device & enable flipping
+      try {
+        const freshCameras = await Html5Qrcode.getCameras();
+        if (freshCameras && freshCameras.length > 0) {
+          setAvailableCameras(freshCameras);
+          const trackSettings = html5QrCode.getRunningTrackSettings?.();
+          const activeId = trackSettings?.deviceId;
+          if (activeId) {
+            const foundIdx = freshCameras.findIndex((c) => c.id === activeId);
+            if (foundIdx !== -1) {
+              setCurrentCameraIndex(foundIdx);
+            }
+          }
+        }
+      } catch (camErr) {
+        console.warn('Could not refresh camera list post-start:', camErr);
+      }
 
       // Check for torch capability
       try {
         const capabilities = html5QrCode.getRunningTrackCapabilities();
         if (capabilities && capabilities.torch) {
           setTorchSupported(true);
+        } else {
+          setTorchSupported(false);
         }
       } catch {
         setTorchSupported(false);
@@ -201,7 +260,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
     if (isOpen && activeTab === 'SCAN') {
       // Small delay to ensure the DOM element #qr-reader is mounted
       timer = setTimeout(() => {
-        startScanner(currentCameraIndex);
+        startScanner();
       }, 250);
     } else {
       stopScanner();
@@ -364,7 +423,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
                   <button 
                     type="button" 
                     className="btn-secondary" 
-                    onClick={() => startScanner(currentCameraIndex)}
+                    onClick={() => startScanner()}
                     style={{ fontSize: '0.82rem' }}
                   >
                     <i className="ph ph-arrow-counter-clockwise"></i> Try Again
