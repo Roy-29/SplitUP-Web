@@ -1395,7 +1395,7 @@ export async function tursoMarkNotificationAsRead(notifId) {
   await initTursoTables();
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "READ" WHERE id = ? AND status = "UNREAD";',
+      sql: "UPDATE notifications SET status = 'READ' WHERE id = ? AND status = 'UNREAD';",
       args: [String(notifId)]
     });
   } catch (_) {}
@@ -1406,7 +1406,7 @@ export async function tursoMarkAllNotificationsAsRead(userId) {
   await initTursoTables();
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "READ" WHERE userId = ? AND status = "UNREAD";',
+      sql: "UPDATE notifications SET status = 'READ' WHERE userId = ? AND status = 'UNREAD';",
       args: [String(userId)]
     });
   } catch (_) {}
@@ -1459,7 +1459,7 @@ export async function tursoJoinGroupByCode(joinCode, currentUser) {
 
   // 3. Check if user already has a pending join request
   const pendingReq = await tursoClient.execute({
-    sql: 'SELECT id, status FROM group_requests WHERE groupId = ? AND userId = ? AND type = "JOIN_REQUEST" AND status = "PENDING" LIMIT 1;',
+    sql: "SELECT id, status FROM group_requests WHERE groupId = ? AND userId = ? AND type = 'JOIN_REQUEST' AND status = 'PENDING' LIMIT 1;",
     args: [groupId, String(currentUser.id)]
   });
 
@@ -1572,14 +1572,14 @@ export async function tursoApproveJoinRequest(requestId, adminUser) {
 
   // Update request status to APPROVED
   await tursoClient.execute({
-    sql: 'UPDATE group_requests SET status = "APPROVED" WHERE id = ?;',
+    sql: "UPDATE group_requests SET status = 'APPROVED' WHERE id = ?;",
     args: [String(requestId)]
   });
 
   // Mark notification as RESOLVED
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "RESOLVED" WHERE json_extract(data, "$.requestId") = ?;',
+      sql: "UPDATE notifications SET status = 'RESOLVED' WHERE json_extract(data, '$.requestId') = ?;",
       args: [String(requestId)]
     });
   } catch (_) {}
@@ -1620,13 +1620,13 @@ export async function tursoDeclineJoinRequest(requestId, adminUser) {
   const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
 
   await tursoClient.execute({
-    sql: 'UPDATE group_requests SET status = "DECLINED" WHERE id = ?;',
+    sql: "UPDATE group_requests SET status = 'DECLINED' WHERE id = ?;",
     args: [String(requestId)]
   });
 
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "DECLINED" WHERE json_extract(data, "$.requestId") = ?;',
+      sql: "UPDATE notifications SET status = 'DECLINED' WHERE json_extract(data, '$.requestId') = ?;",
       args: [String(requestId)]
     });
   } catch (_) {}
@@ -1664,7 +1664,7 @@ export async function tursoInviteUserToGroup(groupId, targetUserId, inviterUser)
 
   // Check if invitation already pending
   const pendingCheck = await tursoClient.execute({
-    sql: 'SELECT id FROM group_requests WHERE groupId = ? AND userId = ? AND type = "INVITATION" AND status = "PENDING" LIMIT 1;',
+    sql: "SELECT id FROM group_requests WHERE groupId = ? AND userId = ? AND type = 'INVITATION' AND status = 'PENDING' LIMIT 1;",
     args: [String(groupId), String(targetUserId)]
   });
   if (pendingCheck.rows.length > 0) {
@@ -1734,13 +1734,13 @@ export async function tursoAcceptGroupInvitation(requestId, currentUser) {
   }
 
   await tursoClient.execute({
-    sql: 'UPDATE group_requests SET status = "ACCEPTED" WHERE id = ?;',
+    sql: "UPDATE group_requests SET status = 'ACCEPTED' WHERE id = ?;",
     args: [String(requestId)]
   });
 
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "RESOLVED" WHERE json_extract(data, "$.requestId") = ?;',
+      sql: "UPDATE notifications SET status = 'RESOLVED' WHERE json_extract(data, '$.requestId') = ?;",
       args: [String(requestId)]
     });
   } catch (_) {}
@@ -1779,13 +1779,13 @@ export async function tursoDeclineGroupInvitation(requestId, currentUser) {
   const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
 
   await tursoClient.execute({
-    sql: 'UPDATE group_requests SET status = "DECLINED" WHERE id = ?;',
+    sql: "UPDATE group_requests SET status = 'DECLINED' WHERE id = ?;",
     args: [String(requestId)]
   });
 
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "DECLINED" WHERE json_extract(data, "$.requestId") = ?;',
+      sql: "UPDATE notifications SET status = 'DECLINED' WHERE json_extract(data, '$.requestId') = ?;",
       args: [String(requestId)]
     });
   } catch (_) {}
@@ -1806,12 +1806,12 @@ export async function tursoCancelGroupRequest(requestId) {
   if (!tursoClient || !requestId) return;
   await initTursoTables();
   await tursoClient.execute({
-    sql: 'UPDATE group_requests SET status = "CANCELLED" WHERE id = ?;',
+    sql: "UPDATE group_requests SET status = 'CANCELLED' WHERE id = ?;",
     args: [String(requestId)]
   });
   try {
     await tursoClient.execute({
-      sql: 'UPDATE notifications SET status = "CANCELLED" WHERE json_extract(data, "$.requestId") = ?;',
+      sql: "UPDATE notifications SET status = 'CANCELLED' WHERE json_extract(data, '$.requestId') = ?;",
       args: [String(requestId)]
     });
   } catch (_) {}
@@ -1826,7 +1826,7 @@ export async function tursoGetGroupPendingRequests(groupId) {
       sql: `SELECT gr.*, u.name, u.username, u.email, u.avatar 
             FROM group_requests gr
             LEFT JOIN users u ON gr.userId = u.id
-            WHERE gr.groupId = ? AND gr.status = "PENDING"
+            WHERE gr.groupId = ? AND gr.status = 'PENDING'
             ORDER BY gr.createdAt DESC;`,
       args: [String(groupId)]
     });
