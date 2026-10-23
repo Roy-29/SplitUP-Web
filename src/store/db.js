@@ -167,12 +167,42 @@ export class LocalDatabase {
     return false;
   }
 
+  static getNotifications(userId = null) {
+    const all = JSON.parse(localStorage.getItem('splitup_notifications') || '[]');
+    if (!userId) return all;
+    return all.filter(n => String(n.userId) === String(userId));
+  }
+
+  static addNotification(notif) {
+    const all = this.getNotifications();
+    const newNotif = {
+      ...notif,
+      id: notif.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: notif.createdAt || Date.now(),
+      status: notif.status || 'UNREAD'
+    };
+    all.unshift(newNotif);
+    localStorage.setItem('splitup_notifications', JSON.stringify(all));
+    return newNotif;
+  }
+
+  static markNotificationAsRead(notifId) {
+    const all = this.getNotifications().map(n => String(n.id) === String(notifId) ? { ...n, status: 'READ' } : n);
+    localStorage.setItem('splitup_notifications', JSON.stringify(all));
+  }
+
+  static markAllNotificationsAsRead(userId) {
+    const all = this.getNotifications().map(n => String(n.userId) === String(userId) ? { ...n, status: 'READ' } : n);
+    localStorage.setItem('splitup_notifications', JSON.stringify(all));
+  }
+
   static clearData() {
     localStorage.removeItem('splitup_members');
     localStorage.removeItem('splitup_expenses');
     localStorage.removeItem('splitup_personal_expenses');
     localStorage.removeItem('splitup_personal_topics');
     localStorage.removeItem('splitup_settlements');
+    localStorage.removeItem('splitup_notifications');
     // Re-initialize to mock defaults so the app doesn't break
     this.init();
   }

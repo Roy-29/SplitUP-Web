@@ -4,6 +4,7 @@ import {
   isTursoConfigured, 
   tursoCreateGroup, 
   tursoAddMember, 
+  tursoInviteUserToGroup,
   tursoSearchUsers, 
   tursoGetSuggestedUsers 
 } from '../lib/turso';
@@ -124,8 +125,8 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
       return;
     }
 
-    if (selectedUsers.length < 2) {
-      setErrorMsg('Please search and add at least one other registered member to the group.');
+    if (selectedUsers.length < 1) {
+      setErrorMsg('Please select at least one member or ensure you are logged in.');
       return;
     }
 
@@ -135,11 +136,26 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
       if (isTursoConfigured) {
         const group = await tursoCreateGroup(groupName.trim(), currentUser?.id || 'user');
         
-        for (const u of selectedUsers) {
-          await tursoAddMember(group.id, u.name, u.email || '', u.id, u.phone || '');
+        // Add creator immediately
+        await tursoAddMember(group.id, currentUser.name, currentUser.email || '', currentUser.id, currentUser.phone || '');
+
+        // Dispatch invitations to all other selected registered users
+        const otherUsers = selectedUsers.filter(u => String(u.id) !== String(currentUser.id));
+        let invitedCount = 0;
+        for (const u of otherUsers) {
+          try {
+            await tursoInviteUserToGroup(group.id, u.id, currentUser);
+            invitedCount++;
+          } catch (invErr) {
+            console.warn(`Could not invite ${u.name}:`, invErr);
+          }
         }
 
-        alert(`Group "${group.name}" created successfully!\nInvite Code: ${group.joinCode}\n(You can share this code with friends so they can join!)`);
+        const notice = invitedCount > 0 
+          ? `Invitations sent to ${invitedCount} member(s). Once they accept from their notifications, they will appear in the group.`
+          : 'You can share this code or invite friends anytime!';
+
+        alert(`Group "${group.name}" created successfully!\n\nJoin Code: ${group.joinCode}\n\n${notice}`);
       } else {
         const groupId = `grp_${Date.now()}`;
         for (const u of selectedUsers) {

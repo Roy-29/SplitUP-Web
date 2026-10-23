@@ -38,6 +38,14 @@ import {
   tursoUpdateMember,
   tursoDeleteMember,
   tursoUpdateGroup,
+  tursoGetNotifications,
+  tursoMarkNotificationAsRead,
+  tursoMarkAllNotificationsAsRead,
+  tursoApproveJoinRequest,
+  tursoDeclineJoinRequest,
+  tursoInviteUserToGroup,
+  tursoAcceptGroupInvitation,
+  tursoDeclineGroupInvitation,
   initTursoTables, 
   tursoSignOut,
   tursoSyncCurrentUser 
@@ -68,6 +76,15 @@ function JoinRouteHandler({ currentUser, onJoinSuccess }) {
       }}
     />
   );
+}
+
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return 'Just now';
+  const diff = Math.floor((Date.now() - timestamp) / 1000);
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 function App() {
@@ -106,6 +123,9 @@ function App() {
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState(null);
   const [selectedTopicForDetails, setSelectedTopicForDetails] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [isActingOnNotif, setIsActingOnNotif] = useState(false);
   const notificationRef = useRef(null);
 
   useEffect(() => {
@@ -323,6 +343,20 @@ function App() {
       groups: mockGroups
     });
 
+    // Fetch user notifications
+    try {
+      let userNotifs = [];
+      if (isTursoConfigured) {
+        userNotifs = await tursoGetNotifications(currentUser.id);
+      } else {
+        userNotifs = LocalDatabase.getNotifications(currentUser.id);
+      }
+      setNotifications(userNotifs);
+      setUnreadNotifCount((userNotifs || []).filter(n => n.status === 'UNREAD').length);
+    } catch (notifErr) {
+      console.warn("Could not load notifications:", notifErr);
+    }
+
     setSelectedGroupForDetails(prev => {
       if (!prev) return null;
       return mockGroups.find(g => String(g.id) === String(prev.id)) || prev;
@@ -339,6 +373,25 @@ function App() {
       loadData();
     }
   }, [isAuthenticated]);
+
+  // Polling for real-time notifications every 15 seconds
+  useEffect(() => {
+    if (!isAuthenticated || !data.currentUser?.id) return;
+    const fetchNotifs = async () => {
+      try {
+        let notifs = [];
+        if (isTursoConfigured) {
+          notifs = await tursoGetNotifications(data.currentUser.id);
+        } else {
+          notifs = LocalDatabase.getNotifications(data.currentUser.id);
+        }
+        setNotifications(notifs);
+        setUnreadNotifCount((notifs || []).filter(n => n.status === 'UNREAD').length);
+      } catch (_) {}
+    };
+    const interval = setInterval(fetchNotifs, 15000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, data.currentUser?.id]);
 
   if (isAuthChecking) {
     return (
@@ -482,6 +535,123 @@ function App() {
       throw err;
     }
     loadData();
+  };
+
+  const handleApproveJoinRequest = async (e, notif) => {
+    e?.stopPropagation?.();
+    const reqId = notif.data?.requestId;
+    if (!reqId) return;
+    setIsActingOnNotif(true);
+    try {
+      if (isTursoConfigured) {
+        await tursoApproveJoinRequest(reqId, currentUser);
+      }
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'RESOLVED' } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to approve join request');
+    } finally {
+      setIsActingOnNotif(false);
+    }
+  };
+
+  const handleDeclineJoinRequest = async (e, notif) => {
+    e?.stopPropagation?.();
+    const reqId = notif.data?.requestId;
+    if (!reqId) return;
+    setIsActingOnNotif(true);
+    try {
+      if (isTursoConfigured) {
+        await tursoDeclineJoinRequest(reqId, currentUser);
+      }
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'DECLINED' } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to decline join request');
+    } finally {
+      setIsActingOnNotif(false);
+    }
+  };
+
+  const handleAcceptInvitation = async (e, notif) => {
+    e?.stopPropagation?.();
+    const reqId = notif.data?.requestId;
+    if (!reqId) return;
+    setIsActingOnNotif(true);
+    try {
+      if (isTursoConfigured) {
+        await tursoAcceptGroupInvitation(reqId, currentUser);
+      }
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'RESOLVED' } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to accept invitation');
+    } finally {
+      setIsActingOnNotif(false);
+    }
+  };
+
+  const handleDeclineInvitation = async (e, notif) => {
+    e?.stopPropagation?.();
+    const reqId = notif.data?.requestId;
+    if (!reqId) return;
+    setIsActingOnNotif(true);
+    try {
+      if (isTursoConfigured) {
+        await tursoDeclineGroupInvitation(reqId, currentUser);
+      }
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'DECLINED' } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to decline invitation');
+    } finally {
+      setIsActingOnNotif(false);
+    }
+  };
+
+  const handleMarkAllRead = async (e) => {
+    e?.stopPropagation?.();
+    if (!currentUser?.id) return;
+    try {
+      if (isTursoConfigured) {
+        await tursoMarkAllNotificationsAsRead(currentUser.id);
+      } else {
+        LocalDatabase.markAllNotificationsAsRead(currentUser.id);
+      }
+      setNotifications(prev => prev.map(n => ({ ...n, status: 'READ' })));
+      setUnreadNotifCount(0);
+    } catch (err) {
+      console.warn("Could not mark all notifications read:", err);
+    }
+  };
+
+  const handleNotificationItemClick = (notif) => {
+    if (notif.status === 'UNREAD') {
+      if (isTursoConfigured) {
+        tursoMarkNotificationAsRead(notif.id);
+      } else {
+        LocalDatabase.markNotificationAsRead(notif.id);
+      }
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, status: 'READ' } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+    }
+    if (notif.data?.groupId) {
+      const foundGroup = data.groups.find(g => String(g.id) === String(notif.data.groupId));
+      if (foundGroup) {
+        setSelectedGroupForDetails(foundGroup);
+        setIsNotificationsOpen(false);
+        navigate('/groups');
+        return;
+      }
+    }
+    if (notif.type === 'EXPENSE_ADDED' || notif.type === 'EXPENSE_UPDATED' || notif.type === 'SETTLEMENT_RECORDED') {
+      setIsNotificationsOpen(false);
+      navigate('/expenses');
+    }
   };
 
   const handleUpdateGroup = async (groupId, updatedFields) => {
@@ -737,7 +907,11 @@ function App() {
                   aria-label="Toggle notifications"
                 >
                   <i className="ph ph-bell"></i>
-                  <span className="notification-dot"></span>
+                  {unreadNotifCount > 0 ? (
+                    <span className="notification-badge-count">{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</span>
+                  ) : (
+                    <span className="notification-dot"></span>
+                  )}
                 </button>
 
                 {isNotificationsOpen && (
@@ -748,92 +922,163 @@ function App() {
                     <div className="notification-dropdown-header">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>Notifications</h4>
-                        <span className="notification-count-tag">Live</span>
+                        {unreadNotifCount > 0 ? (
+                          <span className="notification-count-tag">{unreadNotifCount} New</span>
+                        ) : (
+                          <span className="notification-count-tag" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>All read</span>
+                        )}
                       </div>
-                      <button 
-                        type="button" 
-                        className="notification-close-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsNotificationsOpen(false);
-                        }}
-                      >
-                        <i className="ph ph-x"></i>
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {unreadNotifCount > 0 && (
+                          <button 
+                            type="button" 
+                            className="notif-mark-all-btn"
+                            onClick={handleMarkAllRead}
+                            title="Mark all as read"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <button 
+                          type="button" 
+                          className="notification-close-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsNotificationsOpen(false);
+                          }}
+                        >
+                          <i className="ph ph-x"></i>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="notification-list">
-                      {/* Turso Cloud Sync Status */}
-                      <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/settings'); }}>
-                        <div className={`notification-icon-box ${isTursoConfigured ? 'success' : 'warning'}`}>
-                          <i className={`ph ${isTursoConfigured ? 'ph-cloud-check' : 'ph-cloud-slash'}`}></i>
+                      {notifications.length === 0 ? (
+                        <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          <i className="ph ph-bell-simple" style={{ fontSize: '2rem', color: 'var(--text-muted)', marginBottom: '8px', display: 'inline-block' }}></i>
+                          <p style={{ margin: 0, fontSize: '0.85rem' }}>No notifications yet.</p>
+                          <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>You'll get notifications for join requests, invites, and group bills here!</span>
                         </div>
-                        <div className="notification-body">
-                          <div className="notification-body-header">
-                            <span className="notification-item-title">
-                              {isTursoConfigured ? 'Turso Cloud Synced' : 'Offline Cache Mode'}
-                            </span>
-                            <span className="notification-time">Sync</span>
-                          </div>
-                          <p className="notification-item-desc">
-                            {isTursoConfigured 
-                              ? 'All shared groups, debts, and balances are securely stored in the cloud.' 
-                              : 'Connected to local storage. Tap to configure Turso Cloud in Settings.'}
-                          </p>
-                        </div>
-                      </div>
+                      ) : (
+                        notifications.map(notif => {
+                          const isUnread = notif.status === 'UNREAD';
+                          const isJoinRequest = notif.type === 'JOIN_REQUEST';
+                          const isInvitation = notif.type === 'GROUP_INVITATION';
+                          const isPending = notif.status === 'UNREAD' || notif.status === 'PENDING';
 
-                      {/* Financial Balance Summary */}
-                      <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/dashboard'); }}>
-                        <div className={`notification-icon-box ${totalToReceive > 0 ? 'info' : (totalOwed > 0 ? 'warning' : 'success')}`}>
-                          <i className={`ph ${totalToReceive > 0 ? 'ph-hand-coins' : (totalOwed > 0 ? 'ph-wallet' : 'ph-check-circle')}`}></i>
-                        </div>
-                        <div className="notification-body">
-                          <div className="notification-body-header">
-                            <span className="notification-item-title">
-                              {totalToReceive > 0 
-                                ? 'Receivable Reminder' 
-                                : (totalOwed > 0 ? 'Pending Payables' : 'Finances Balanced')}
-                            </span>
-                            <span className="notification-time">Balance</span>
-                          </div>
-                          <p className="notification-item-desc">
-                            {totalToReceive > 0 
-                              ? `You have a total of ${formatCurrency(totalToReceive)} to receive from your friends.`
-                              : (totalOwed > 0 
-                                ? `You have an outstanding balance of ${formatCurrency(totalOwed)} across your groups.`
-                                : 'All debts settled! You have no outstanding dues.')}
-                          </p>
-                        </div>
-                      </div>
+                          let iconClass = 'ph-bell';
+                          let iconBoxType = 'info';
 
-                      {/* Latest Activity Notice */}
-                      {activities && activities.length > 0 && (() => {
-                        const act = activities[0];
-                        const d = act.data || {};
-                        const isExp = act.type === 'EXPENSE';
-                        const title = isExp ? (d.title || 'Group Expense') : (d.title || 'Settlement');
-                        const amount = d.amount || 0;
-                        const payer = d.payerName || d.paidByName || (isExp && d.paidBy === currentUser.id ? 'You' : 'Member');
-                        return (
-                          <div className="notification-item" onClick={() => { setIsNotificationsOpen(false); navigate('/expenses'); }}>
-                            <div className="notification-icon-box accent">
-                              <i className={`ph ${isExp ? 'ph-receipt' : 'ph-handshake'}`}></i>
-                            </div>
-                            <div className="notification-body">
-                              <div className="notification-body-header">
-                                <span className="notification-item-title" style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {title}
-                                </span>
-                                <span className="notification-time">Latest</span>
+                          if (isJoinRequest) {
+                            iconClass = 'ph-user-plus';
+                            iconBoxType = 'warning';
+                          } else if (isInvitation) {
+                            iconClass = 'ph-envelope-simple';
+                            iconBoxType = 'accent';
+                          } else if (notif.type === 'JOIN_APPROVED' || notif.type === 'INVITATION_ACCEPTED') {
+                            iconClass = 'ph-check-circle';
+                            iconBoxType = 'success';
+                          } else if (notif.type === 'JOIN_DECLINED' || notif.type === 'INVITATION_DECLINED') {
+                            iconClass = 'ph-x-circle';
+                            iconBoxType = 'warning';
+                          } else if (notif.type === 'EXPENSE_ADDED' || notif.type === 'EXPENSE_UPDATED') {
+                            iconClass = 'ph-receipt';
+                            iconBoxType = 'accent';
+                          } else if (notif.type === 'SETTLEMENT_RECORDED') {
+                            iconClass = 'ph-handshake';
+                            iconBoxType = 'success';
+                          }
+
+                          return (
+                            <div 
+                              key={notif.id}
+                              className={`notification-item ${isUnread ? 'unread' : ''}`}
+                              onClick={() => handleNotificationItemClick(notif)}
+                            >
+                              <div className={`notification-icon-box ${iconBoxType}`}>
+                                <i className={`ph ${iconClass}`}></i>
                               </div>
-                              <p className="notification-item-desc">
-                                {isExp ? 'Expense' : 'Settlement'} of {formatCurrency(amount)} by {payer}.
-                              </p>
+                              <div className="notification-body">
+                                <div className="notification-body-header">
+                                  <span className="notification-item-title" title={notif.title}>
+                                    {notif.title}
+                                  </span>
+                                  <span className="notification-time">{formatTimeAgo(notif.createdAt)}</span>
+                                </div>
+                                <p className="notification-item-desc">{notif.message}</p>
+
+                                {/* Admin Join Request Actions */}
+                                {isJoinRequest && (
+                                  <div className="notif-actions" onClick={(e) => e.stopPropagation()}>
+                                    {isPending ? (
+                                      <>
+                                        <button 
+                                          type="button" 
+                                          className="notif-btn notif-btn-approve"
+                                          disabled={isActingOnNotif}
+                                          onClick={(e) => handleApproveJoinRequest(e, notif)}
+                                          title="Approve join request"
+                                        >
+                                          <i className="ph ph-check"></i>
+                                          <span>Approve</span>
+                                        </button>
+                                        <button 
+                                          type="button" 
+                                          className="notif-btn notif-btn-decline"
+                                          disabled={isActingOnNotif}
+                                          onClick={(e) => handleDeclineJoinRequest(e, notif)}
+                                          title="Decline join request"
+                                        >
+                                          <i className="ph ph-x"></i>
+                                          <span>Decline</span>
+                                        </button>
+                                      </>
+                                    ) : notif.status === 'RESOLVED' || notif.status === 'APPROVED' ? (
+                                      <span className="notif-status-badge approved">Approved ✓</span>
+                                    ) : (
+                                      <span className="notif-status-badge declined">Declined ✕</span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* User Group Invitation Actions */}
+                                {isInvitation && (
+                                  <div className="notif-actions" onClick={(e) => e.stopPropagation()}>
+                                    {isPending ? (
+                                      <>
+                                        <button 
+                                          type="button" 
+                                          className="notif-btn notif-btn-approve"
+                                          disabled={isActingOnNotif}
+                                          onClick={(e) => handleAcceptInvitation(e, notif)}
+                                          title="Accept invitation"
+                                        >
+                                          <i className="ph ph-check"></i>
+                                          <span>Accept</span>
+                                        </button>
+                                        <button 
+                                          type="button" 
+                                          className="notif-btn notif-btn-decline"
+                                          disabled={isActingOnNotif}
+                                          onClick={(e) => handleDeclineInvitation(e, notif)}
+                                          title="Decline invitation"
+                                        >
+                                          <i className="ph ph-x"></i>
+                                          <span>Decline</span>
+                                        </button>
+                                      </>
+                                    ) : notif.status === 'RESOLVED' || notif.status === 'ACCEPTED' ? (
+                                      <span className="notif-status-badge approved">Accepted ✓</span>
+                                    ) : (
+                                      <span className="notif-status-badge declined">Declined ✕</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })()}
+                          );
+                        })
+                      )}
                     </div>
 
                     <div className="notification-dropdown-footer">
@@ -1080,6 +1325,7 @@ function App() {
         onDeleteExpense={handleDeleteExpense}
         onDeleteSettlement={handleDeleteSettlement}
         onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
+        onRefreshData={loadData}
       />
     </div>
   )

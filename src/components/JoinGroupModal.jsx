@@ -78,6 +78,8 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
         const result = await tursoJoinGroupByCode(trimmed, currentUser);
         if (result.alreadyMember) {
           setSuccessMsg(`You are already a member of "${result.name}"!`);
+        } else if (result.status === 'PENDING_APPROVAL') {
+          setSuccessMsg(result.message || `Join request sent! Group admin will review and approve your request.`);
         } else {
           setSuccessMsg(`Successfully joined "${result.name}"!`);
         }
@@ -87,7 +89,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
           setSuccessMsg('');
           onSuccess?.();
           onClose();
-        }, 1200);
+        }, result.status === 'PENDING_APPROVAL' ? 2400 : 1200);
       } else {
         setError('Turso database is not connected.');
         setIsLoading(false);

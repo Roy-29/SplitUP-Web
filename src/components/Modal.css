@@ -560,3 +560,122 @@ input[type=number] {
   }
 }
 
+/* Pending Requests & Invitations in Group Details */
+.pending-requests-section {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.pending-requests-section.invitations-section {
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.pending-requests-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pending-requests-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pending-requests-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.pending-requests-count.invitations-count {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--accent-secondary);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.pending-requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pending-request-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-item);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  gap: 12px;
+}
+
+.pending-request-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pending-request-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.pending-request-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pending-request-username {
+  font-size: 0.76rem;
+  color: var(--accent-primary);
+  font-family: monospace;
+}
+
+.pending-request-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.pending-request-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.invite-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+

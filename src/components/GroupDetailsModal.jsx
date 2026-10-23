@@ -5,7 +5,16 @@ import { calculateBalances, simplifyDebts, isDebtor, isCreditor, matchesMember, 
 import { avatarColorForName } from './GroupCard';
 import { normalizeCategory } from './ExpensesView';
 import { useConfirm } from './ConfirmModal';
-import { isTursoConfigured, tursoSearchUsers, tursoGetSuggestedUsers } from '../lib/turso';
+import { 
+  isTursoConfigured, 
+  tursoSearchUsers, 
+  tursoGetSuggestedUsers,
+  tursoGetGroupPendingRequests,
+  tursoApproveJoinRequest,
+  tursoDeclineJoinRequest,
+  tursoInviteUserToGroup,
+  tursoCancelGroupRequest 
+} from '../lib/turso';
 import { LocalDatabase } from '../store/db';
 import UserAvatar from './UserAvatar';
 import './Modal.css';
@@ -55,7 +64,8 @@ export default function GroupDetailsModal({
   onDeleteMember,
   onDeleteExpense,
   onDeleteSettlement,
-  onSelectExpense
+  onSelectExpense,
+  onRefreshData
 }) {
   const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('EXPENSES'); // 'EXPENSES' | 'MEMBERS' | 'SETTLEMENTS'
@@ -75,6 +85,11 @@ export default function GroupDetailsModal({
   const [isSubmittingMember, setIsSubmittingMember] = useState(false);
   const [memberError, setMemberError] = useState('');
 
+  // Pending requests state (Join requests & Sent invitations)
+  const [pendingRequests, setPendingRequests] = useState({ joinRequests: [], invitations: [] });
+  const [isLoadingPending, setIsLoadingPending] = useState(false);
+  const [inviteSuccessMsg, setInviteSuccessMsg] = useState('');
+
   // Edit Member state
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [editMemberName, setEditMemberName] = useState('');
@@ -83,6 +98,19 @@ export default function GroupDetailsModal({
 
   // Member search
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
+
+  const loadPendingRequests = async () => {
+    if (!group?.id || !isTursoConfigured) return;
+    try {
+      setIsLoadingPending(true);
+      const res = await tursoGetGroupPendingRequests(group.id);
+      setPendingRequests(res || { joinRequests: [], invitations: [] });
+    } catch (err) {
+      console.warn("Could not load group pending requests:", err);
+    } finally {
+      setIsLoadingPending(false);
+    }
+  };
 
   // Keep state in sync with group prop
   useEffect(() => {
@@ -93,6 +121,9 @@ export default function GroupDetailsModal({
     setIsAddingMember(false);
     setEditingMemberId(null);
     setMemberError('');
+    if (isOpen && group?.id) {
+      loadPendingRequests();
+    }
   }, [group?.id, group?.name, isOpen]);
 
   // Filter members, expenses, and settlements for this specific group
@@ -264,19 +295,55 @@ export default function GroupDetailsModal({
     setIsSubmittingMember(true);
     setMemberError('');
     try {
-      await onAddMember?.(group.id, {
-        name: targetUser.name,
-        email: targetUser.email || '',
-        userId: targetUser.id,
-        phone: targetUser.phone || ''
-      });
+      if (isTursoConfigured) {
+        await tursoInviteUserToGroup(group.id, targetUser.id, currentUser);
+        setInviteSuccessMsg(`Invitation sent to ${targetUser.name} (@${targetUser.username})! They can accept or decline from their notifications.`);
+        setTimeout(() => setInviteSuccessMsg(''), 6000);
+        await loadPendingRequests();
+      } else {
+        await onAddMember?.(group.id, {
+          name: targetUser.name,
+          email: targetUser.email || '',
+          userId: targetUser.id,
+          phone: targetUser.phone || ''
+        });
+      }
       setIsAddingMember(false);
       setUserSearchQuery('');
       setUserSearchResults([]);
     } catch (err) {
-      setMemberError(err.message || 'Failed to add member');
+      setMemberError(err.message || 'Failed to invite member');
     } finally {
       setIsSubmittingMember(false);
+    }
+  };
+
+  const handleApproveJoinRequestModal = async (requestId) => {
+    try {
+      await tursoApproveJoinRequest(requestId, currentUser);
+      await loadPendingRequests();
+      onRefreshData?.();
+    } catch (err) {
+      alert(err.message || 'Failed to approve join request');
+    }
+  };
+
+  const handleDeclineJoinRequestModal = async (requestId) => {
+    try {
+      await tursoDeclineJoinRequest(requestId, currentUser);
+      await loadPendingRequests();
+      onRefreshData?.();
+    } catch (err) {
+      alert(err.message || 'Failed to decline join request');
+    }
+  };
+
+  const handleCancelInvitationModal = async (requestId) => {
+    try {
+      await tursoCancelGroupRequest(requestId);
+      await loadPendingRequests();
+    } catch (err) {
+      alert(err.message || 'Failed to cancel invitation');
     }
   };
 
@@ -970,7 +1037,7 @@ export default function GroupDetailsModal({
                             onClick={() => handleAddRegisteredUser(u)}
                             style={{ fontSize: '0.76rem', padding: '5px 12px', borderRadius: '6px' }}
                           >
-                            <i className="ph ph-plus"></i> Add to Group
+                            <i className="ph ph-paper-plane-tilt"></i> Send Invite
                           </button>
                         </div>
                       ))}
@@ -1007,6 +1074,113 @@ export default function GroupDetailsModal({
                       <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
                     </button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Invite Success Banner */}
+            {inviteSuccessMsg && (
+              <div className="invite-success-banner">
+                <i className="ph ph-check-circle" style={{ fontSize: '1.1rem' }}></i>
+                <span>{inviteSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Pending Join Requests (Visible to Creator / Admin) */}
+            {isGroupCreator && pendingRequests.joinRequests && pendingRequests.joinRequests.length > 0 && (
+              <div className="pending-requests-section">
+                <div className="pending-requests-header">
+                  <div className="pending-requests-title">
+                    <i className="ph ph-user-plus" style={{ color: '#f59e0b' }}></i>
+                    <span>Pending Join Requests</span>
+                  </div>
+                  <span className="pending-requests-count">
+                    {pendingRequests.joinRequests.length} Pending
+                  </span>
+                </div>
+                <div className="pending-requests-list">
+                  {pendingRequests.joinRequests.map(req => (
+                    <div key={req.id} className="pending-request-card">
+                      <div className="pending-request-user">
+                        <UserAvatar user={{ name: req.userName, avatar: req.avatar }} size={34} fontSize="0.8rem" />
+                        <div className="pending-request-info">
+                          <div className="pending-request-name">
+                            <span>{req.userName}</span>
+                            {req.username && <span className="pending-request-username">@{req.username}</span>}
+                          </div>
+                          <div className="pending-request-sub">
+                            Requested to join via QR / Join Code
+                          </div>
+                        </div>
+                      </div>
+                      <div className="pending-request-actions">
+                        <button
+                          type="button"
+                          className="notif-btn notif-btn-approve"
+                          onClick={() => handleApproveJoinRequestModal(req.id)}
+                          title="Approve join request"
+                        >
+                          <i className="ph ph-check"></i>
+                          <span>Approve</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="notif-btn notif-btn-decline"
+                          onClick={() => handleDeclineJoinRequestModal(req.id)}
+                          title="Decline join request"
+                        >
+                          <i className="ph ph-x"></i>
+                          <span>Decline</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Pending Invitations (Awaiting Acceptance) */}
+            {pendingRequests.invitations && pendingRequests.invitations.length > 0 && (
+              <div className="pending-requests-section invitations-section">
+                <div className="pending-requests-header">
+                  <div className="pending-requests-title">
+                    <i className="ph ph-paper-plane-tilt" style={{ color: 'var(--accent-secondary)' }}></i>
+                    <span>Pending Invitations</span>
+                  </div>
+                  <span className="pending-requests-count invitations-count">
+                    {pendingRequests.invitations.length} Sent
+                  </span>
+                </div>
+                <div className="pending-requests-list">
+                  {pendingRequests.invitations.map(req => (
+                    <div key={req.id} className="pending-request-card">
+                      <div className="pending-request-user">
+                        <UserAvatar user={{ name: req.userName, avatar: req.avatar }} size={34} fontSize="0.8rem" />
+                        <div className="pending-request-info">
+                          <div className="pending-request-name">
+                            <span>{req.userName}</span>
+                            {req.username && <span className="pending-request-username">@{req.username}</span>}
+                          </div>
+                          <div className="pending-request-sub">
+                            Invitation sent • Awaiting user acceptance
+                          </div>
+                        </div>
+                      </div>
+                      {isGroupCreator && (
+                        <div className="pending-request-actions">
+                          <button
+                            type="button"
+                            className="notif-btn notif-btn-decline"
+                            onClick={() => handleCancelInvitationModal(req.id)}
+                            title="Cancel this invitation"
+                          >
+                            <i className="ph ph-x"></i>
+                            <span>Cancel</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

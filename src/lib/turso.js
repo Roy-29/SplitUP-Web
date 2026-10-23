@@ -77,12 +77,40 @@ export async function initTursoTables() {
         icon TEXT,
         color TEXT,
         createdAt INTEGER NOT NULL
+      );`,
+      `CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        data TEXT,
+        status TEXT DEFAULT 'UNREAD',
+        createdAt INTEGER NOT NULL
+      );`,
+      `CREATE TABLE IF NOT EXISTS group_requests (
+        id TEXT PRIMARY KEY,
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        createdById TEXT NOT NULL,
+        createdAt INTEGER NOT NULL
       );`
     ]);
 
     // Safe column migrations in case tables were previously created without these columns
     try {
       await tursoClient.execute("ALTER TABLE groups ADD COLUMN joinCode TEXT;");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(userId, createdAt DESC);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_group_requests_group ON group_requests(groupId, status);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_group_requests_user ON group_requests(userId, status);");
     } catch (_) {}
     try {
       await tursoClient.execute("ALTER TABLE expenses ADD COLUMN userId TEXT;");
@@ -729,6 +757,44 @@ export async function tursoAddExpense(expense) {
     ]
   });
 
+  // Notify group members if shared group expense
+  if (!expense.isPersonal && expense.groupId && expense.groupId !== 'personal') {
+    try {
+      const gid = String(expense.groupId);
+      const grpCheck = await tursoClient.execute({
+        sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+        args: [gid]
+      });
+      const groupName = grpCheck.rows.length > 0 ? String(grpCheck.rows[0].name) : 'Group';
+      const curUser = tursoGetCurrentUser();
+      const senderTag = curUser?.name || 'A member';
+
+      const memRes = await tursoClient.execute({
+        sql: 'SELECT DISTINCT userId FROM members WHERE groupId = ? AND userId IS NOT NULL AND userId != ?;',
+        args: [gid, String(expense.userId || curUser?.id || '')]
+      });
+
+      for (const m of memRes.rows) {
+        if (m.userId) {
+          await tursoCreateNotification({
+            userId: String(m.userId),
+            type: 'EXPENSE_ADDED',
+            title: `New Expense • ${groupName}`,
+            message: `${senderTag} added "${expense.title.trim()}" (${expense.currencyCode || 'BDT'} ${Number(expense.amount).toLocaleString()}) in "${groupName}".`,
+            data: {
+              groupId: gid,
+              groupName,
+              expenseId: id,
+              amount: Number(expense.amount)
+            }
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.warn("Notice: could not dispatch expense notification:", notifErr);
+    }
+  }
+
   return { ...expense, id, isPersonal: false };
 }
 
@@ -857,6 +923,45 @@ export async function tursoUpdateExpense(expenseId, fields = {}) {
     sql: `UPDATE expenses SET ${setClauses.join(', ')} WHERE id = ?;`,
     args
   });
+
+  // Notify members about expense update
+  try {
+    const expRow = await tursoClient.execute({
+      sql: 'SELECT groupId, title FROM expenses WHERE id = ? LIMIT 1;',
+      args: [String(expenseId)]
+    });
+    if (expRow.rows.length > 0 && expRow.rows[0].groupId && expRow.rows[0].groupId !== 'personal') {
+      const gid = String(expRow.rows[0].groupId);
+      const grpCheck = await tursoClient.execute({
+        sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+        args: [gid]
+      });
+      const groupName = grpCheck.rows.length > 0 ? String(grpCheck.rows[0].name) : 'Group';
+      const curUser = tursoGetCurrentUser();
+      const senderTag = curUser?.name || 'A member';
+
+      const memRes = await tursoClient.execute({
+        sql: 'SELECT DISTINCT userId FROM members WHERE groupId = ? AND userId IS NOT NULL AND userId != ?;',
+        args: [gid, String(curUser?.id || '')]
+      });
+
+      for (const m of memRes.rows) {
+        if (m.userId) {
+          await tursoCreateNotification({
+            userId: String(m.userId),
+            type: 'EXPENSE_UPDATED',
+            title: `Expense Updated • ${groupName}`,
+            message: `${senderTag} updated "${fields.title || expRow.rows[0].title}" in "${groupName}".`,
+            data: {
+              groupId: gid,
+              groupName,
+              expenseId: String(expenseId)
+            }
+          });
+        }
+      }
+    }
+  } catch (_) {}
 }
 
 // ----------------- Personal Topics Operations -----------------
@@ -1015,6 +1120,50 @@ export async function tursoAddSettlement(settlement) {
     ]
   });
 
+  // Notify payee about recorded settlement
+  try {
+    let payeeUserId = null;
+    const payeeCheck = await tursoClient.execute({
+      sql: 'SELECT userId FROM members WHERE id = ? LIMIT 1;',
+      args: [String(settlement.paidTo)]
+    });
+    if (payeeCheck.rows.length > 0 && payeeCheck.rows[0].userId) {
+      payeeUserId = String(payeeCheck.rows[0].userId);
+    } else {
+      const userCheck = await tursoClient.execute({
+        sql: 'SELECT id FROM users WHERE id = ? LIMIT 1;',
+        args: [String(settlement.paidTo)]
+      });
+      if (userCheck.rows.length > 0) payeeUserId = String(userCheck.rows[0].id);
+    }
+
+    if (payeeUserId) {
+      const payerName = settlement.payerName || (tursoGetCurrentUser()?.name) || 'A member';
+      const gid = String(settlement.groupId || '1');
+      const grpRes = await tursoClient.execute({
+        sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+        args: [gid]
+      });
+      const groupName = grpRes.rows.length > 0 ? String(grpRes.rows[0].name) : 'Group';
+
+      await tursoCreateNotification({
+        userId: payeeUserId,
+        type: 'SETTLEMENT_RECORDED',
+        title: `Settlement Received • ${groupName}`,
+        message: `${payerName} recorded a payment of ৳${Number(settlement.amount).toLocaleString()} to you via ${settlement.paymentMethod || 'Cash'}.`,
+        data: {
+          groupId: gid,
+          groupName,
+          settlementId: id,
+          amount: Number(settlement.amount),
+          payerName
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Notice: could not dispatch settlement notification:", err);
+  }
+
   return { ...settlement, id };
 }
 
@@ -1137,6 +1286,82 @@ export async function tursoDeleteGroup(groupId) {
   ]);
 }
 
+// ----------------- Notification & Approval Operations -----------------
+
+export async function tursoCreateNotification({ userId, type, title, message, data = {} }) {
+  if (!tursoClient || !userId) return null;
+  await initTursoTables();
+
+  const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = Date.now();
+  const dataJson = typeof data === 'string' ? data : JSON.stringify(data);
+
+  try {
+    await tursoClient.execute({
+      sql: 'INSERT INTO notifications (id, userId, type, title, message, data, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?);',
+      args: [id, String(userId), String(type), String(title), String(message), dataJson, 'UNREAD', now]
+    });
+    return { id, userId, type, title, message, data, status: 'UNREAD', createdAt: now };
+  } catch (err) {
+    console.warn("Could not insert notification:", err);
+    return null;
+  }
+}
+
+export async function tursoGetNotifications(userId) {
+  if (!tursoClient || !userId) return [];
+  await initTursoTables();
+
+  try {
+    const res = await tursoClient.execute({
+      sql: 'SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT 50;',
+      args: [String(userId)]
+    });
+
+    return res.rows.map(row => {
+      let parsedData = {};
+      try {
+        parsedData = row.data ? JSON.parse(String(row.data)) : {};
+      } catch (_) {}
+      return {
+        id: String(row.id),
+        userId: String(row.userId),
+        type: String(row.type),
+        title: String(row.title),
+        message: String(row.message),
+        data: parsedData,
+        status: String(row.status || 'UNREAD'),
+        createdAt: Number(row.createdAt)
+      };
+    });
+  } catch (err) {
+    console.warn("Error fetching notifications:", err);
+    return [];
+  }
+}
+
+export async function tursoMarkNotificationAsRead(notifId) {
+  if (!tursoClient || !notifId) return;
+  await initTursoTables();
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "READ" WHERE id = ? AND status = "UNREAD";',
+      args: [String(notifId)]
+    });
+  } catch (_) {}
+}
+
+export async function tursoMarkAllNotificationsAsRead(userId) {
+  if (!tursoClient || !userId) return;
+  await initTursoTables();
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "READ" WHERE userId = ? AND status = "UNREAD";',
+      args: [String(userId)]
+    });
+  } catch (_) {}
+}
+
 export async function tursoJoinGroupByCode(joinCode, currentUser) {
   if (!tursoClient) throw new Error("Turso client is not initialized.");
   await initTursoTables();
@@ -1153,8 +1378,21 @@ export async function tursoJoinGroupByCode(joinCode, currentUser) {
 
   const groupRow = res.rows[0];
   const groupId = String(groupRow.id);
+  const groupName = String(groupRow.name);
+  const createdBy = String(groupRow.createdBy || '');
 
-  // Check if member already exists in group
+  // 1. Check if user is the creator
+  if (currentUser.id === createdBy || currentUser.name === createdBy) {
+    return {
+      id: groupId,
+      name: groupName,
+      joinCode: code,
+      alreadyMember: true,
+      isCreator: true
+    };
+  }
+
+  // 2. Check if member already exists in group
   const existing = await tursoClient.execute({
     sql: 'SELECT id FROM members WHERE groupId = ? AND (userId = ? OR (email IS NOT NULL AND LOWER(email) = ?));',
     args: [groupId, currentUser.id, (currentUser.email || '').toLowerCase().trim()]
@@ -1163,25 +1401,412 @@ export async function tursoJoinGroupByCode(joinCode, currentUser) {
   if (existing.rows.length > 0) {
     return {
       id: groupId,
-      name: String(groupRow.name),
+      name: groupName,
       joinCode: code,
       alreadyMember: true
     };
   }
 
-  // Add current user as member
-  const memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  await tursoClient.execute({
-    sql: 'INSERT INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-    args: [memberId, currentUser.name, (currentUser.email || '').toLowerCase().trim(), groupId, currentUser.id]
+  // 3. Check if user already has a pending join request
+  const pendingReq = await tursoClient.execute({
+    sql: 'SELECT id, status FROM group_requests WHERE groupId = ? AND userId = ? AND type = "JOIN_REQUEST" AND status = "PENDING" LIMIT 1;',
+    args: [groupId, String(currentUser.id)]
   });
+
+  if (pendingReq.rows.length > 0) {
+    return {
+      id: groupId,
+      name: groupName,
+      joinCode: code,
+      status: 'PENDING_APPROVAL',
+      alreadyRequested: true,
+      message: `Your request to join "${groupName}" is already pending admin approval.`
+    };
+  }
+
+  // 4. Create Join Request needing Admin approval!
+  const requestId = `greq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = Date.now();
+
+  await tursoClient.execute({
+    sql: 'INSERT INTO group_requests (id, groupId, userId, type, status, createdById, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
+    args: [requestId, groupId, String(currentUser.id), 'JOIN_REQUEST', 'PENDING', String(currentUser.id), now]
+  });
+
+  // 5. Notify the Group Creator / Admin!
+  let adminUserId = createdBy;
+  const adminCheck = await tursoClient.execute({
+    sql: 'SELECT id FROM users WHERE id = ? OR name = ? OR LOWER(email) = ? LIMIT 1;',
+    args: [createdBy, createdBy, createdBy.toLowerCase()]
+  });
+  if (adminCheck.rows.length > 0) {
+    adminUserId = String(adminCheck.rows[0].id);
+  }
+
+  if (adminUserId) {
+    const requesterTag = currentUser.username ? `@${currentUser.username.replace(/^@/, '')}` : currentUser.name;
+    await tursoCreateNotification({
+      userId: adminUserId,
+      type: 'JOIN_REQUEST',
+      title: `Join Request • ${groupName}`,
+      message: `${requesterTag} requested to join "${groupName}" via code/QR.`,
+      data: {
+        requestId,
+        groupId,
+        groupName,
+        requesterId: String(currentUser.id),
+        requesterName: currentUser.name,
+        requesterUsername: currentUser.username || ''
+      }
+    });
+  }
 
   return {
     id: groupId,
-    name: String(groupRow.name),
+    name: groupName,
     joinCode: code,
-    alreadyMember: false
+    status: 'PENDING_APPROVAL',
+    alreadyMember: false,
+    message: `Join request sent! The group admin will review and approve your request.`
   };
+}
+
+export async function tursoApproveJoinRequest(requestId, adminUser) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const reqCheck = await tursoClient.execute({
+    sql: 'SELECT * FROM group_requests WHERE id = ? LIMIT 1;',
+    args: [String(requestId)]
+  });
+
+  if (reqCheck.rows.length === 0) {
+    throw new Error("Join request not found.");
+  }
+
+  const req = reqCheck.rows[0];
+  const groupId = String(req.groupId);
+  const targetUserId = String(req.userId);
+
+  // Get target user details
+  const targetUserCheck = await tursoClient.execute({
+    sql: 'SELECT id, name, email, bkashNumber, nagadNumber, rocketNumber, username, avatar FROM users WHERE id = ? LIMIT 1;',
+    args: [targetUserId]
+  });
+
+  if (targetUserCheck.rows.length === 0) {
+    throw new Error("User account not found.");
+  }
+
+  const targetUser = targetUserCheck.rows[0];
+  const groupRes = await tursoClient.execute({
+    sql: 'SELECT name, createdBy FROM groups WHERE id = ? LIMIT 1;',
+    args: [groupId]
+  });
+  const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
+
+  // Check if already in group
+  const memCheck = await tursoClient.execute({
+    sql: 'SELECT id FROM members WHERE groupId = ? AND (userId = ? OR (email IS NOT NULL AND LOWER(email) = ?));',
+    args: [groupId, targetUserId, (targetUser.email || '').toLowerCase()]
+  });
+
+  if (memCheck.rows.length === 0) {
+    const memId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const phone = targetUser.bkashNumber || targetUser.nagadNumber || targetUser.rocketNumber || null;
+    await tursoClient.execute({
+      sql: 'INSERT INTO members (id, name, email, phone, groupId, userId) VALUES (?, ?, ?, ?, ?, ?);',
+      args: [memId, String(targetUser.name), targetUser.email ? String(targetUser.email).toLowerCase() : null, phone, groupId, targetUserId]
+    });
+  }
+
+  // Update request status to APPROVED
+  await tursoClient.execute({
+    sql: 'UPDATE group_requests SET status = "APPROVED" WHERE id = ?;',
+    args: [String(requestId)]
+  });
+
+  // Mark notification as RESOLVED
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "RESOLVED" WHERE json_extract(data, "$.requestId") = ?;',
+      args: [String(requestId)]
+    });
+  } catch (_) {}
+
+  // Send notification to the approved user
+  await tursoCreateNotification({
+    userId: targetUserId,
+    type: 'JOIN_APPROVED',
+    title: `Approved to Join "${groupName}"!`,
+    message: `Your request to join "${groupName}" was approved. You can now track and share expenses!`,
+    data: { groupId, groupName }
+  });
+
+  return { success: true, groupId, groupName };
+}
+
+export async function tursoDeclineJoinRequest(requestId, adminUser) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const reqCheck = await tursoClient.execute({
+    sql: 'SELECT * FROM group_requests WHERE id = ? LIMIT 1;',
+    args: [String(requestId)]
+  });
+
+  if (reqCheck.rows.length === 0) {
+    throw new Error("Join request not found.");
+  }
+
+  const req = reqCheck.rows[0];
+  const groupId = String(req.groupId);
+  const targetUserId = String(req.userId);
+
+  const groupRes = await tursoClient.execute({
+    sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+    args: [groupId]
+  });
+  const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
+
+  await tursoClient.execute({
+    sql: 'UPDATE group_requests SET status = "DECLINED" WHERE id = ?;',
+    args: [String(requestId)]
+  });
+
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "DECLINED" WHERE json_extract(data, "$.requestId") = ?;',
+      args: [String(requestId)]
+    });
+  } catch (_) {}
+
+  await tursoCreateNotification({
+    userId: targetUserId,
+    type: 'JOIN_DECLINED',
+    title: `Join Request Declined`,
+    message: `Your request to join "${groupName}" was declined by the admin.`,
+    data: { groupId, groupName }
+  });
+
+  return { success: true, groupId, groupName };
+}
+
+export async function tursoInviteUserToGroup(groupId, targetUserId, inviterUser) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const groupRes = await tursoClient.execute({
+    sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+    args: [String(groupId)]
+  });
+  if (groupRes.rows.length === 0) throw new Error("Group not found.");
+  const groupName = String(groupRes.rows[0].name);
+
+  // Check if target user is already a member
+  const memCheck = await tursoClient.execute({
+    sql: 'SELECT id FROM members WHERE groupId = ? AND userId = ? LIMIT 1;',
+    args: [String(groupId), String(targetUserId)]
+  });
+  if (memCheck.rows.length > 0) {
+    throw new Error("This user is already a member of this group.");
+  }
+
+  // Check if invitation already pending
+  const pendingCheck = await tursoClient.execute({
+    sql: 'SELECT id FROM group_requests WHERE groupId = ? AND userId = ? AND type = "INVITATION" AND status = "PENDING" LIMIT 1;',
+    args: [String(groupId), String(targetUserId)]
+  });
+  if (pendingCheck.rows.length > 0) {
+    throw new Error("An invitation has already been sent to this user and is awaiting their acceptance.");
+  }
+
+  const requestId = `greq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = Date.now();
+
+  await tursoClient.execute({
+    sql: 'INSERT INTO group_requests (id, groupId, userId, type, status, createdById, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
+    args: [requestId, String(groupId), String(targetUserId), 'INVITATION', 'PENDING', String(inviterUser.id), now]
+  });
+
+  const inviterTag = inviterUser.username ? `@${inviterUser.username.replace(/^@/, '')}` : inviterUser.name;
+  await tursoCreateNotification({
+    userId: String(targetUserId),
+    type: 'GROUP_INVITATION',
+    title: `Group Invitation • ${groupName}`,
+    message: `${inviterTag} invited you to join "${groupName}".`,
+    data: {
+      requestId,
+      groupId: String(groupId),
+      groupName,
+      inviterId: String(inviterUser.id),
+      inviterName: inviterUser.name,
+      inviterUsername: inviterUser.username || ''
+    }
+  });
+
+  return { success: true, requestId, groupName, message: `Invitation sent! The user can accept or decline from their notifications.` };
+}
+
+export async function tursoAcceptGroupInvitation(requestId, currentUser) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const reqCheck = await tursoClient.execute({
+    sql: 'SELECT * FROM group_requests WHERE id = ? LIMIT 1;',
+    args: [String(requestId)]
+  });
+
+  if (reqCheck.rows.length === 0) throw new Error("Invitation not found.");
+  const req = reqCheck.rows[0];
+  const groupId = String(req.groupId);
+  const inviterId = String(req.createdById);
+
+  const groupRes = await tursoClient.execute({
+    sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+    args: [groupId]
+  });
+  const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
+
+  // Add member
+  const memCheck = await tursoClient.execute({
+    sql: 'SELECT id FROM members WHERE groupId = ? AND (userId = ? OR (email IS NOT NULL AND LOWER(email) = ?));',
+    args: [groupId, String(currentUser.id), (currentUser.email || '').toLowerCase()]
+  });
+
+  if (memCheck.rows.length === 0) {
+    const memId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const phone = currentUser.bkashNumber || currentUser.nagadNumber || currentUser.rocketNumber || null;
+    await tursoClient.execute({
+      sql: 'INSERT INTO members (id, name, email, phone, groupId, userId) VALUES (?, ?, ?, ?, ?, ?);',
+      args: [memId, String(currentUser.name), currentUser.email ? String(currentUser.email).toLowerCase() : null, phone, groupId, String(currentUser.id)]
+    });
+  }
+
+  await tursoClient.execute({
+    sql: 'UPDATE group_requests SET status = "ACCEPTED" WHERE id = ?;',
+    args: [String(requestId)]
+  });
+
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "RESOLVED" WHERE json_extract(data, "$.requestId") = ?;',
+      args: [String(requestId)]
+    });
+  } catch (_) {}
+
+  // Notify inviter
+  const userTag = currentUser.username ? `@${currentUser.username.replace(/^@/, '')}` : currentUser.name;
+  await tursoCreateNotification({
+    userId: inviterId,
+    type: 'INVITATION_ACCEPTED',
+    title: `Invitation Accepted!`,
+    message: `${userTag} accepted your invitation to join "${groupName}".`,
+    data: { groupId, groupName, userId: currentUser.id }
+  });
+
+  return { success: true, groupId, groupName };
+}
+
+export async function tursoDeclineGroupInvitation(requestId, currentUser) {
+  if (!tursoClient) throw new Error("Turso client is not initialized.");
+  await initTursoTables();
+
+  const reqCheck = await tursoClient.execute({
+    sql: 'SELECT * FROM group_requests WHERE id = ? LIMIT 1;',
+    args: [String(requestId)]
+  });
+
+  if (reqCheck.rows.length === 0) throw new Error("Invitation not found.");
+  const req = reqCheck.rows[0];
+  const groupId = String(req.groupId);
+  const inviterId = String(req.createdById);
+
+  const groupRes = await tursoClient.execute({
+    sql: 'SELECT name FROM groups WHERE id = ? LIMIT 1;',
+    args: [groupId]
+  });
+  const groupName = groupRes.rows.length > 0 ? String(groupRes.rows[0].name) : 'Group';
+
+  await tursoClient.execute({
+    sql: 'UPDATE group_requests SET status = "DECLINED" WHERE id = ?;',
+    args: [String(requestId)]
+  });
+
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "DECLINED" WHERE json_extract(data, "$.requestId") = ?;',
+      args: [String(requestId)]
+    });
+  } catch (_) {}
+
+  const userTag = currentUser.username ? `@${currentUser.username.replace(/^@/, '')}` : currentUser.name;
+  await tursoCreateNotification({
+    userId: inviterId,
+    type: 'INVITATION_DECLINED',
+    title: `Invitation Declined`,
+    message: `${userTag} declined your invitation to join "${groupName}".`,
+    data: { groupId, groupName }
+  });
+
+  return { success: true, groupId, groupName };
+}
+
+export async function tursoCancelGroupRequest(requestId) {
+  if (!tursoClient || !requestId) return;
+  await initTursoTables();
+  await tursoClient.execute({
+    sql: 'UPDATE group_requests SET status = "CANCELLED" WHERE id = ?;',
+    args: [String(requestId)]
+  });
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE notifications SET status = "CANCELLED" WHERE json_extract(data, "$.requestId") = ?;',
+      args: [String(requestId)]
+    });
+  } catch (_) {}
+}
+
+export async function tursoGetGroupPendingRequests(groupId) {
+  if (!tursoClient || !groupId) return { joinRequests: [], invitations: [] };
+  await initTursoTables();
+
+  try {
+    const res = await tursoClient.execute({
+      sql: `SELECT gr.*, u.name, u.username, u.email, u.avatar 
+            FROM group_requests gr
+            LEFT JOIN users u ON gr.userId = u.id
+            WHERE gr.groupId = ? AND gr.status = "PENDING"
+            ORDER BY gr.createdAt DESC;`,
+      args: [String(groupId)]
+    });
+
+    const joinRequests = [];
+    const invitations = [];
+
+    for (const row of res.rows) {
+      const item = {
+        id: String(row.id),
+        groupId: String(row.groupId),
+        userId: String(row.userId),
+        type: String(row.type),
+        status: String(row.status),
+        createdById: String(row.createdById),
+        createdAt: Number(row.createdAt),
+        userName: String(row.name || 'User'),
+        username: row.username ? String(row.username).replace(/^@/, '') : '',
+        email: row.email ? String(row.email) : '',
+        avatar: row.avatar ? String(row.avatar) : ''
+      };
+      if (item.type === 'JOIN_REQUEST') joinRequests.push(item);
+      else invitations.push(item);
+    }
+
+    return { joinRequests, invitations };
+  } catch (err) {
+    console.warn("Could not query group_requests:", err);
+    return { joinRequests: [], invitations: [] };
+  }
 }
 
 // ----------------- Google OAuth Helper -----------------
