@@ -168,26 +168,19 @@
 .personal-summary-card {
   background: var(--bg-secondary);
   border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 22px 24px;
+  border-radius: 16px;
+  padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
   box-shadow: var(--glass-shadow);
-  position: relative;
-  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.personal-summary-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent-primary), var(--success));
+.personal-summary-card:hover {
+  border-color: rgba(99, 102, 241, 0.3);
 }
 
 .summary-title {

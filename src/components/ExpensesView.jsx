@@ -175,16 +175,29 @@ export default function ExpensesView({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Summary Stat Card */}
           <div className="personal-summary-card">
-            <div>
-              <span className="summary-title">
-                Total Personal Spending
-              </span>
-              <div className="summary-amount">
-                {formatSimple(totalPersonalSpent, currencyCode)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div className="topic-icon-box" style={{
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: 'var(--accent-primary)',
+                width: '50px',
+                height: '50px',
+                borderRadius: '14px',
+                fontSize: '1.5rem',
+                flexShrink: 0
+              }}>
+                <i className="ph ph-wallet"></i>
               </div>
-              <span className="summary-subtitle">
-                Across {personalTopics.length} subjects • {Object.keys(categoryStats).length} categories • {personalExpenses.length} records
-              </span>
+              <div>
+                <span className="summary-title">
+                  Total Personal Spending
+                </span>
+                <div className="summary-amount">
+                  {formatSimple(totalPersonalSpent, currencyCode)}
+                </div>
+                <span className="summary-subtitle">
+                  Across {personalTopics.length} subjects • {Object.keys(categoryStats).length} categories • {personalExpenses.length} records
+                </span>
+              </div>
             </div>
 
             {/* Sub-view switcher: By Subjects / Topics vs All Expenses List */}
