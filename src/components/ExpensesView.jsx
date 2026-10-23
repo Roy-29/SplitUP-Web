@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatSimple } from '../lib/CurrencyManager';
+import { useConfirm } from './ConfirmModal';
 import './ExpensesView.css';
 
 export const LEGACY_CATEGORY_MAP = {
@@ -61,12 +62,11 @@ export default function ExpensesView({
   onDeleteTopic,
   currencyCode = 'BDT'
 }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('PERSONAL'); // 'PERSONAL' | 'GROUP'
   const [personalViewMode, setPersonalViewMode] = useState('TOPICS'); // 'TOPICS' | 'ALL'
   const [groupFilter, setGroupFilter] = useState('ALL');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState(null);
-  const [deletingExpenseId, setDeletingExpenseId] = useState(null);
-  const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   // Group filter calculations
   const filteredActivities = activities.filter(activity => {
@@ -658,55 +658,25 @@ export default function ExpensesView({
                               {formatSimple(item.amount, currencyCode)}
                             </div>
                             {onDeleteExpense && (
-                              deletingExpenseId === item.id ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
-                                  <button 
-                                    className="btn-primary"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeleteExpense(item.id);
-                                      setDeletingExpenseId(null);
-                                    }}
-                                    style={{ 
-                                      background: '#d63031', 
-                                      fontSize: '0.75rem', 
-                                      padding: '4px 10px', 
-                                      height: '28px', 
-                                      borderRadius: '6px',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                  <button 
-                                    className="btn-secondary"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDeletingExpenseId(null);
-                                    }}
-                                    style={{ 
-                                      fontSize: '0.75rem', 
-                                      padding: '4px 8px', 
-                                      height: '28px', 
-                                      borderRadius: '6px'
-                                    }}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <button 
-                                  className="btn-icon delete-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeletingExpenseId(item.id);
-                                  }}
-                                  title="Delete expense"
-                                  style={{ width: '32px', height: '32px' }}
-                                >
-                                  <i className="ph ph-trash"></i>
-                                </button>
-                              )
+                              <button 
+                                className="btn-icon delete-btn"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const ok = await confirm({
+                                    title: 'Delete Expense?',
+                                    message: `Are you sure you want to delete "${item.description || 'this expense'}"?`,
+                                    confirmText: 'Delete Expense',
+                                    type: 'danger'
+                                  });
+                                  if (ok) {
+                                    onDeleteExpense(item.id);
+                                  }
+                                }}
+                                title="Delete expense"
+                                style={{ width: '32px', height: '32px' }}
+                              >
+                                <i className="ph ph-trash"></i>
+                              </button>
                             )}
                           </div>
                         </div>
@@ -807,59 +777,31 @@ export default function ExpensesView({
                           {formatSimple(data.amount, currencyCode)}
                         </div>
                         {((isExpense && onDeleteExpense) || (!isExpense && onDeleteSettlement)) && (
-                          deletingActivityId === data.id ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
-                              <button 
-                                className="btn-primary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isExpense) {
-                                    onDeleteExpense(data.id);
-                                  } else {
-                                    onDeleteSettlement(data.id);
-                                  }
-                                  setDeletingActivityId(null);
-                                }}
-                                style={{ 
-                                  background: '#d63031', 
-                                  fontSize: '0.75rem', 
-                                  padding: '4px 10px', 
-                                  height: '28px', 
-                                  borderRadius: '6px',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                Delete
-                              </button>
-                              <button 
-                                className="btn-secondary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeletingActivityId(null);
-                                }}
-                                style={{ 
-                                  fontSize: '0.75rem', 
-                                  padding: '4px 8px', 
-                                  height: '28px', 
-                                  borderRadius: '6px'
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button 
-                              className="btn-icon delete-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeletingActivityId(data.id);
-                              }}
-                              title={`Delete ${isExpense ? 'expense' : 'settlement'}`}
-                              style={{ width: '32px', height: '32px' }}
-                            >
-                              <i className="ph ph-trash"></i>
-                            </button>
-                          )
+                          <button 
+                            className="btn-icon delete-btn"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const ok = await confirm({
+                                title: isExpense ? 'Delete Expense?' : 'Delete Settlement?',
+                                message: isExpense
+                                  ? `Are you sure you want to delete "${data.description || 'this expense'}"?`
+                                  : 'Are you sure you want to delete this settlement record?',
+                                confirmText: 'Delete',
+                                type: 'danger'
+                              });
+                              if (ok) {
+                                if (isExpense) {
+                                  onDeleteExpense(data.id);
+                                } else {
+                                  onDeleteSettlement(data.id);
+                                }
+                              }
+                            }}
+                            title={`Delete ${isExpense ? 'expense' : 'settlement'}`}
+                            style={{ width: '32px', height: '32px' }}
+                          >
+                            <i className="ph ph-trash"></i>
+                          </button>
                         )}
                       </div>
                     </div>

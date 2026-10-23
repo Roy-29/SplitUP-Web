@@ -5,6 +5,7 @@ import { normalizeCategory } from './ExpensesView';
 import CustomSelect from './CustomSelect';
 import { isTursoConfigured, tursoAddPersonalTopic } from '../lib/turso';
 import { LocalDatabase } from '../store/db';
+import { useConfirm } from './ConfirmModal';
 import './Modal.css';
 
 const CATEGORY_META = {
@@ -75,6 +76,7 @@ export default function ExpenseDetailsModal({
   onUpdateSettlement,
   onFilterTopic
 }) {
+  const { confirm } = useConfirm();
   const [copiedTrx, setCopiedTrx] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -148,14 +150,24 @@ export default function ExpenseDetailsModal({
     setTimeout(() => setCopiedTrx(false), 2000);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (isSettlement) {
-      if (window.confirm("Are you sure you want to delete this settlement record?")) {
+      const ok = await confirm({
+        title: 'Delete Settlement?',
+        message: 'Are you sure you want to delete this settlement record? Debt balances will be recalculated.',
+        confirmText: 'Delete Settlement'
+      });
+      if (ok) {
         onDeleteSettlement?.(expense.id);
         onClose();
       }
     } else {
-      if (window.confirm(`Are you sure you want to delete "${expense.title || 'this expense'}"?`)) {
+      const ok = await confirm({
+        title: 'Delete Expense?',
+        message: `Are you sure you want to delete "${expense.title || 'this expense'}"?`,
+        confirmText: 'Delete Expense'
+      });
+      if (ok) {
         onDeleteExpense?.(expense.id);
         onClose();
       }

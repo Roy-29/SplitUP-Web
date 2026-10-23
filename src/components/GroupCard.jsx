@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { formatSimple } from '../lib/CurrencyManager';
+import { useConfirm } from './ConfirmModal';
 
 const avatarColors = [
   '#00b894', // Green
@@ -21,8 +22,21 @@ export function avatarColorForName(name) {
 }
 
 export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, currencyCode = 'BDT' }) {
+  const { confirm } = useConfirm();
   const avatarColor = useMemo(() => avatarColorForName(group.name), [group.name]);
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
+
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    const isConfirmed = await confirm({
+      title: 'Delete Group?',
+      message: `Are you sure you want to delete group "${group.name}"? All associated expenses, settlements, and member records will be permanently deleted.`,
+      confirmText: 'Delete Group'
+    });
+    if (isConfirmed) {
+      onDeleteGroup(group.id);
+    }
+  };
 
   return (
     <div 
@@ -66,12 +80,7 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
             <button 
               className="btn-icon delete-btn" 
               style={{ width: '32px', height: '32px' }} 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                if (window.confirm(`Are you sure you want to delete group "${group.name}"?\nAll associated expenses, settlements, and member records will be permanently deleted.`)) {
-                  onDeleteGroup(group.id);
-                }
-              }}
+              onClick={handleDelete}
               title="Delete group"
             >
               <i className="ph ph-trash"></i>

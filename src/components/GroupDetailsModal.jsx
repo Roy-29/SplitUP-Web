@@ -4,6 +4,7 @@ import { formatSimple } from '../lib/CurrencyManager';
 import { calculateBalances, simplifyDebts } from '../lib/BalanceCalculator';
 import { avatarColorForName } from './GroupCard';
 import { normalizeCategory } from './ExpensesView';
+import { useConfirm } from './ConfirmModal';
 import './Modal.css';
 
 const CATEGORY_META = {
@@ -49,6 +50,7 @@ export default function GroupDetailsModal({
   onDeleteSettlement,
   onSelectExpense
 }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('EXPENSES'); // 'EXPENSES' | 'MEMBERS' | 'SETTLEMENTS'
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -210,8 +212,13 @@ export default function GroupDetailsModal({
                 type="button" 
                 className="btn-icon delete-btn" 
                 style={{ width: '32px', height: '32px' }}
-                onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete group "${group.name}"?\nAll associated expenses and settlements will be permanently deleted.`)) {
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'Delete Group?',
+                    message: `Are you sure you want to delete group "${group.name}"? All associated expenses, settlements, and member records will be permanently deleted.`,
+                    confirmText: 'Delete Group'
+                  });
+                  if (ok) {
                     onDeleteGroup(group.id);
                     onClose();
                   }
@@ -441,9 +448,14 @@ export default function GroupDetailsModal({
                           <button
                             type="button"
                             className="btn-icon delete-btn"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm(`Delete expense "${expense.title}"?`)) {
+                              const ok = await confirm({
+                                title: 'Delete Expense?',
+                                message: `Are you sure you want to delete "${expense.title}"?`,
+                                confirmText: 'Delete Expense'
+                              });
+                              if (ok) {
                                 onDeleteExpense(expense.id);
                               }
                             }}
@@ -653,9 +665,14 @@ export default function GroupDetailsModal({
                           <button
                             type="button"
                             className="btn-icon delete-btn"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm("Delete settlement record?")) {
+                              const ok = await confirm({
+                                title: 'Delete Settlement?',
+                                message: 'Are you sure you want to delete this settlement record? Debt balances will be recalculated.',
+                                confirmText: 'Delete Settlement'
+                              });
+                              if (ok) {
                                 onDeleteSettlement(stl.id);
                               }
                             }}

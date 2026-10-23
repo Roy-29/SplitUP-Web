@@ -42,6 +42,7 @@ import './components/Modal.css'
 import './App.css'
 
 import { formatSimple, formatCompact } from './lib/CurrencyManager'
+import { useConfirm } from './components/ConfirmModal'
 
 function JoinRouteHandler({ currentUser, onJoinSuccess }) {
   const { code } = useParams();
@@ -68,6 +69,7 @@ function JoinRouteHandler({ currentUser, onJoinSuccess }) {
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm } = useConfirm();
   const isSettingsPage = location.pathname === '/settings';
   const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -827,11 +829,16 @@ function App() {
               currencyCode={currencyCode}
               setCurrencyCode={setCurrencyCode}
               onRefreshData={loadData}
-              onResetData={() => {
-                if (window.confirm("Are you sure you want to reset all test data? This cannot be undone.")) {
+              onResetData={async () => {
+                const ok = await confirm({
+                  title: 'Reset All Test Data?',
+                  message: 'Are you sure you want to reset all test data? All local records will be deleted. This cannot be undone.',
+                  confirmText: 'Reset Data',
+                  type: 'danger'
+                });
+                if (ok) {
                   LocalDatabase.clearData();
                   loadData();
-                  alert("Test data reset successfully!");
                 }
               }}
               onLogout={() => {

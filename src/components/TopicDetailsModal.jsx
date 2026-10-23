@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple } from '../lib/CurrencyManager';
 import { normalizeCategory } from './ExpensesView';
+import { useConfirm } from './ConfirmModal';
 import './Modal.css';
 
 const CATEGORY_META = {
@@ -37,6 +38,7 @@ export default function TopicDetailsModal({
   onUpdateTopic,
   onSelectExpense
 }) {
+  const { confirm } = useConfirm();
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -92,9 +94,14 @@ export default function TopicDetailsModal({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const handleDeleteTopic = () => {
+  const handleDeleteTopic = async () => {
     if (topic.isUntagged) return;
-    if (window.confirm(`Are you sure you want to delete the subject "${topic.name}"?\n(The expenses inside will remain preserved as general personal expenses)`)) {
+    const ok = await confirm({
+      title: 'Delete Subject?',
+      message: `Are you sure you want to delete the subject "${topic.name}"? The expenses inside will remain preserved as general personal expenses.`,
+      confirmText: 'Delete Subject'
+    });
+    if (ok) {
       onDeleteTopic?.(topic.id);
       onClose();
     }
@@ -452,9 +459,14 @@ export default function TopicDetailsModal({
                             <button
                               type="button"
                               className="btn-icon delete-btn"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`Delete expense "${item.title}"?`)) {
+                                const ok = await confirm({
+                                  title: 'Delete Expense?',
+                                  message: `Are you sure you want to delete "${item.title}"?`,
+                                  confirmText: 'Delete Expense'
+                                });
+                                if (ok) {
                                   onDeleteExpense(item.id);
                                 }
                               }}
