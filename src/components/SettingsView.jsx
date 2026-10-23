@@ -6,6 +6,7 @@ import {
   tursoUpdateUserProfile, 
   tursoExportAllData, 
   tursoRestoreData,
+  tursoCheckUsernameAvailability,
   isTursoConfigured 
 } from '../lib/turso';
 import { currencies } from '../lib/CurrencyManager';
@@ -42,6 +43,11 @@ export default function SettingsView({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
 
+  const [usernameCheck, setUsernameCheck] = useState({
+    status: 'idle', // 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'current'
+    message: ''
+  });
+
   // Sync state if currentUser changes
   React.useEffect(() => {
     setProfileName(currentUser?.name || '');
@@ -53,6 +59,56 @@ export default function SettingsView({
     setProfileRocket(currentUser?.rocketNumber || '');
     setProfilePrimaryMfs(currentUser?.primaryMfs || 'BKASH');
   }, [currentUser]);
+
+  // Real-time username availability check
+  React.useEffect(() => {
+    if (activeModal !== 'editProfile') {
+      setUsernameCheck({ status: 'idle', message: '' });
+      return;
+    }
+
+    const trimmed = (profileUsername || '').trim().toLowerCase().replace(/^@/, '');
+    const currentHandle = (currentUser?.username || '').trim().toLowerCase().replace(/^@/, '');
+
+    if (!trimmed) {
+      setUsernameCheck({ status: 'invalid', message: 'Username cannot be empty' });
+      return;
+    }
+
+    if (trimmed === currentHandle) {
+      setUsernameCheck({ status: 'current', message: 'Your current handle' });
+      return;
+    }
+
+    if (trimmed.length < 3) {
+      setUsernameCheck({ status: 'invalid', message: 'At least 3 characters' });
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,30}$/.test(trimmed)) {
+      setUsernameCheck({ status: 'invalid', message: 'Letters, numbers & _ only (max 30)' });
+      return;
+    }
+
+    setUsernameCheck({ status: 'checking', message: 'Checking availability...' });
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await tursoCheckUsernameAvailability(trimmed, currentUser?.id);
+        if (res.isSelf || trimmed === currentHandle) {
+          setUsernameCheck({ status: 'current', message: 'Your current handle' });
+        } else if (res.available) {
+          setUsernameCheck({ status: 'available', message: `@${trimmed} is available` });
+        } else {
+          setUsernameCheck({ status: 'taken', message: res.reason || `@${trimmed} is already taken` });
+        }
+      } catch (_) {
+        setUsernameCheck({ status: 'idle', message: '' });
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [profileUsername, activeModal, currentUser]);
 
   // Compress image helper using canvas to keep avatar size compact (<35KB)
   const compressImage = (file, maxWidth = 256, maxHeight = 256) => {
@@ -148,6 +204,18 @@ export default function SettingsView({
   // ---------------- Profile Update ----------------
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (usernameCheck.status === 'taken') {
+      setProfileMessage({ type: 'error', text: `The username @${profileUsername} is already taken. Please choose another.` });
+      return;
+    }
+    if (usernameCheck.status === 'invalid') {
+      setProfileMessage({ type: 'error', text: usernameCheck.message || "Invalid username format." });
+      return;
+    }
+    if (usernameCheck.status === 'checking') {
+      setProfileMessage({ type: 'error', text: "Please wait while username availability is being verified." });
+      return;
+    }
     setIsSavingProfile(true);
     setProfileMessage(null);
     try {
@@ -780,19 +848,31 @@ export default function SettingsView({
               </div>
 
               <div className="form-group">
-                <label>Username / Handle</label>
-                <div className="input-with-icon">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ margin: 0 }}>Username / Handle</label>
+                  {usernameCheck.status !== 'idle' && (
+                    <span className={`username-status-badge ${usernameCheck.status}`}>
+                      {usernameCheck.status === 'checking' && <i className="ph ph-spinner ph-spin"></i>}
+                      {usernameCheck.status === 'available' && <i className="ph-bold ph-check"></i>}
+                      {usernameCheck.status === 'current' && <i className="ph-bold ph-check"></i>}
+                      {usernameCheck.status === 'taken' && <i className="ph-bold ph-x"></i>}
+                      {usernameCheck.status === 'invalid' && <i className="ph ph-warning-circle"></i>}
+                      <span>{usernameCheck.message}</span>
+                    </span>
+                  )}
+                </div>
+                <div className={`input-with-icon ${(usernameCheck.status === 'available' || usernameCheck.status === 'current') ? 'input-success' : (usernameCheck.status === 'taken' || usernameCheck.status === 'invalid') ? 'input-error' : ''}`}>
                   <i className="ph ph-at"></i>
                   <input 
                     type="text" 
                     value={profileUsername}
-                    onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+                    onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                     required
                     placeholder="e.g. swapnil29"
                     maxLength={30}
                   />
                 </div>
-                <span className="field-hint">Unique identity for group search (@{profileUsername || 'username'})</span>
+                <span className="field-hint">Unique identity across SplitUP (@{profileUsername.replace(/^@/, '') || 'username'})</span>
               </div>
 
               <div className="form-group">
@@ -821,7 +901,7 @@ export default function SettingsView({
                 <button 
                   type="submit" 
                   className="btn-primary" 
-                  disabled={isSavingProfile}
+                  disabled={isSavingProfile || usernameCheck.status === 'taken' || usernameCheck.status === 'invalid' || usernameCheck.status === 'checking'}
                 >
                   {isSavingProfile ? 'Saving...' : 'Save Changes'}
                 </button>

@@ -138,7 +138,7 @@ export async function initTursoTables() {
         
         // Ensure uniqueness
         const check = await tursoClient.execute({
-          sql: "SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1;",
+          sql: "SELECT id FROM users WHERE LOWER(username) = ? AND id != ? LIMIT 1;",
           args: [base, String(row.id)]
         });
         const assignedUsername = check.rows.length > 0 ? `${base}_${Math.random().toString(36).substring(2, 5)}` : base;
@@ -151,8 +151,44 @@ export async function initTursoTables() {
       console.warn("Notice: user username migration backfill:", migErr);
     }
 
+    // Deduplicate any duplicate usernames (case-insensitive) across existing users before creating unique index
+    try {
+      const dupRows = await tursoClient.execute(`
+        SELECT LOWER(username) AS uname, COUNT(*) AS cnt 
+        FROM users 
+        WHERE username IS NOT NULL AND username != '' 
+        GROUP BY LOWER(username) 
+        HAVING cnt > 1;
+      `);
+      for (const row of dupRows.rows) {
+        const uname = String(row.uname);
+        const usersWithUname = await tursoClient.execute({
+          sql: "SELECT id FROM users WHERE LOWER(username) = ? ORDER BY createdAt ASC;",
+          args: [uname]
+        });
+        // Leave the first user with their username, rename subsequent duplicates
+        for (let i = 1; i < usersWithUname.rows.length; i++) {
+          const dupUserId = String(usersWithUname.rows[i].id);
+          const newUname = `${uname}_${Math.random().toString(36).substring(2, 6)}`;
+          await tursoClient.execute({
+            sql: "UPDATE users SET username = ? WHERE id = ?;",
+            args: [newUname, dupUserId]
+          });
+        }
+      }
+    } catch (dupErr) {
+      console.warn("Notice: username deduplication check:", dupErr);
+    }
+
+    // Enforce case-insensitive unique index on users.username at database level
+    try {
+      await tursoClient.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(LOWER(username));");
+    } catch (idxErr) {
+      console.warn("Notice: could not create unique index on username:", idxErr);
+    }
+
     isTablesInitialized = true;
-    console.log("Turso tables initialized successfully with personal & join code support.");
+    console.log("Turso tables initialized successfully with unique usernames & join codes.");
   } catch (err) {
     console.error("Failed to initialize Turso tables:", err);
     throw err;
@@ -172,7 +208,7 @@ export async function tursoSignUp(name, email, password, shortProfile = '', user
   
   // Check if email already exists
   const existing = await tursoClient.execute({
-    sql: 'SELECT id FROM users WHERE email = ? LIMIT 1;',
+    sql: 'SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1;',
     args: [normalizedEmail]
   });
 
@@ -191,25 +227,48 @@ export async function tursoSignUp(name, email, password, shortProfile = '', user
     cleanUsername = `user_${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  const existingUsername = await tursoClient.execute({
-    sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
-    args: [cleanUsername]
-  });
+  // If user explicitly provided a username, validate format strictly
+  if (username) {
+    if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
+      throw new Error("Username must be 3-30 characters containing only letters, numbers, and underscores.");
+    }
 
-  if (existingUsername.rows.length > 0) {
-    if (username) {
+    const existingUsername = await tursoClient.execute({
+      sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+      args: [cleanUsername]
+    });
+
+    if (existingUsername.rows.length > 0) {
       throw new Error(`The username @${cleanUsername} is already taken. Please choose another.`);
     }
-    cleanUsername = `${cleanUsername}_${Math.random().toString(36).substring(2, 5)}`;
+  } else {
+    // If auto-generated from email/name, ensure absolute uniqueness
+    let attempts = 0;
+    while (attempts < 15) {
+      const existingUsername = await tursoClient.execute({
+        sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+        args: [cleanUsername]
+      });
+      if (existingUsername.rows.length === 0) break;
+      cleanUsername = `${(username || normalizedEmail.split('@')[0]).replace(/[^a-z0-9_]/g, '')}_${Math.random().toString(36).substring(2, 6)}`;
+      attempts++;
+    }
   }
 
   const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
 
-  await tursoClient.execute({
-    sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
-    args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), cleanUsername, now]
-  });
+  try {
+    await tursoClient.execute({
+      sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
+      args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), cleanUsername, now]
+    });
+  } catch (insertErr) {
+    if (insertErr.message?.includes('UNIQUE constraint failed') || insertErr.message?.includes('idx_users_username_unique')) {
+      throw new Error(`The username @${cleanUsername} is already taken. Please choose another.`);
+    }
+    throw insertErr;
+  }
 
   const user = {
     id: userId,
@@ -275,6 +334,87 @@ export function tursoGetCurrentUser() {
 
 export function tursoSignOut() {
   localStorage.removeItem('splitup_turso_user');
+}
+
+/**
+ * Check if a username is available in real-time.
+ * @param {string} rawUsername - The candidate username.
+ * @param {string|null} currentUserId - The current user's ID if updating their profile (so their own current handle isn't flagged as taken).
+ * @returns {Promise<{ available: boolean, cleanUsername: string, reason?: string, isSelf?: boolean }>}
+ */
+export async function tursoCheckUsernameAvailability(rawUsername, currentUserId = null) {
+  if (!rawUsername) {
+    return { available: false, cleanUsername: '', reason: 'Username cannot be empty.' };
+  }
+
+  const cleanUsername = String(rawUsername)
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+
+  if (cleanUsername.length < 3) {
+    return { 
+      available: false, 
+      cleanUsername, 
+      reason: 'Username must be at least 3 characters.' 
+    };
+  }
+
+  if (cleanUsername.length > 30) {
+    return { 
+      available: false, 
+      cleanUsername, 
+      reason: 'Username cannot exceed 30 characters.' 
+    };
+  }
+
+  if (!/^[a-z0-9_]+$/.test(cleanUsername)) {
+    return { 
+      available: false, 
+      cleanUsername, 
+      reason: 'Only lowercase letters, numbers, and underscores allowed.' 
+    };
+  }
+
+  if (!tursoClient) {
+    const cur = tursoGetCurrentUser();
+    if (cur && cur.id === currentUserId && cur.username?.toLowerCase() === cleanUsername) {
+      return { available: true, cleanUsername, isSelf: true };
+    }
+    return { available: true, cleanUsername };
+  }
+
+  try {
+    await initTursoTables();
+
+    if (currentUserId) {
+      const selfCheck = await tursoClient.execute({
+        sql: 'SELECT id, username FROM users WHERE id = ? LIMIT 1;',
+        args: [String(currentUserId)]
+      });
+      if (selfCheck.rows.length > 0 && String(selfCheck.rows[0].username || '').toLowerCase() === cleanUsername) {
+        return { available: true, cleanUsername, isSelf: true };
+      }
+    }
+
+    const check = await tursoClient.execute({
+      sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+      args: [cleanUsername]
+    });
+
+    if (check.rows.length > 0) {
+      return { 
+        available: false, 
+        cleanUsername, 
+        reason: `@${cleanUsername} is already taken.` 
+      };
+    }
+
+    return { available: true, cleanUsername };
+  } catch (err) {
+    console.error("tursoCheckUsernameAvailability error:", err);
+    return { available: false, cleanUsername, reason: 'Failed to check username availability.' };
+  }
 }
 
 // ----------------- Data Operations -----------------
@@ -1124,19 +1264,34 @@ export async function tursoGoogleSignIn(credentialToken) {
     let cleanUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!cleanUsername || cleanUsername.length < 3) cleanUsername = `user_${Math.random().toString(36).substring(2, 6)}`;
 
-    // Check username uniqueness
-    const taken = await tursoClient.execute({
-      sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
-      args: [cleanUsername]
-    });
-    if (taken.rows.length > 0) {
-      cleanUsername = `${cleanUsername}_${Math.random().toString(36).substring(2, 5)}`;
+    // Check username uniqueness in a loop to ensure 100% collision-free username
+    let attempts = 0;
+    while (attempts < 15) {
+      const taken = await tursoClient.execute({
+        sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+        args: [cleanUsername]
+      });
+      if (taken.rows.length === 0) break;
+      cleanUsername = `${email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '')}_${Math.random().toString(36).substring(2, 6)}`;
+      attempts++;
     }
 
-    await tursoClient.execute({
-      sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
-      args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', cleanUsername, avatar, now, 'BKASH']
-    });
+    try {
+      await tursoClient.execute({
+        sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+        args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', cleanUsername, avatar, now, 'BKASH']
+      });
+    } catch (insertErr) {
+      if (insertErr.message?.includes('UNIQUE constraint failed') || insertErr.message?.includes('idx_users_username_unique')) {
+        cleanUsername = `user_${Math.random().toString(36).substring(2, 8)}`;
+        await tursoClient.execute({
+          sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+          args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', cleanUsername, avatar, now, 'BKASH']
+        });
+      } else {
+        throw insertErr;
+      }
+    }
 
     user = {
       id: userId,
@@ -1170,9 +1325,9 @@ export async function tursoUpdateUserProfile(userId, { name, username, shortProf
 
   let updatedUsername = current.username || (current.email ? current.email.split('@')[0] : 'user');
   if (username !== undefined) {
-    const cleanUser = username.trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '');
-    if (cleanUser.length < 3) {
-      throw new Error("Username must be at least 3 characters and contain only letters, numbers, or underscores.");
+    const cleanUser = username.trim().toLowerCase().replace(/^@/, '');
+    if (!/^[a-z0-9_]{3,30}$/.test(cleanUser)) {
+      throw new Error("Username must be 3-30 characters containing only letters, numbers, and underscores.");
     }
     if (tursoClient) {
       const taken = await tursoClient.execute({
@@ -1205,20 +1360,27 @@ export async function tursoUpdateUserProfile(userId, { name, username, shortProf
 
   await initTursoTables();
 
-  await tursoClient.execute({
-    sql: 'UPDATE users SET name = ?, username = ?, shortProfile = ?, avatar = ?, bkashNumber = ?, nagadNumber = ?, rocketNumber = ?, primaryMfs = ? WHERE id = ?;',
-    args: [
-      trimmedName,
-      updatedUsername,
-      trimmedProfile, 
-      updatedAvatar, 
-      updatedBkash, 
-      updatedNagad, 
-      updatedRocket, 
-      updatedPrimaryMfs, 
-      String(userId)
-    ]
-  });
+  try {
+    await tursoClient.execute({
+      sql: 'UPDATE users SET name = ?, username = ?, shortProfile = ?, avatar = ?, bkashNumber = ?, nagadNumber = ?, rocketNumber = ?, primaryMfs = ? WHERE id = ?;',
+      args: [
+        trimmedName,
+        updatedUsername,
+        trimmedProfile, 
+        updatedAvatar, 
+        updatedBkash, 
+        updatedNagad, 
+        updatedRocket, 
+        updatedPrimaryMfs, 
+        String(userId)
+      ]
+    });
+  } catch (updateErr) {
+    if (updateErr.message?.includes('UNIQUE constraint failed') || updateErr.message?.includes('idx_users_username_unique')) {
+      throw new Error(`The username @${updatedUsername} is already taken. Please choose another.`);
+    }
+    throw updateErr;
+  }
 
   try {
     await tursoClient.execute({

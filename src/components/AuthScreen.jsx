@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { isTursoConfigured, tursoSignUp, tursoSignIn, tursoGoogleSignIn } from '../lib/turso';
+import React, { useState, useEffect } from 'react';
+import { isTursoConfigured, tursoSignUp, tursoSignIn, tursoGoogleSignIn, tursoCheckUsernameAvailability } from '../lib/turso';
 import { GoogleLogin } from '@react-oauth/google';
 import './AuthScreen.css';
 
@@ -10,10 +10,55 @@ export default function AuthScreen({ onLoginSuccess }) {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   
+  const [usernameCheck, setUsernameCheck] = useState({
+    status: 'idle', // 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+    message: ''
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const hasGoogleClientId = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
+  useEffect(() => {
+    if (!isSignUp) {
+      setUsernameCheck({ status: 'idle', message: '' });
+      return;
+    }
+
+    const trimmed = username.trim().toLowerCase().replace(/^@/, '');
+    if (!trimmed) {
+      setUsernameCheck({ status: 'idle', message: '' });
+      return;
+    }
+
+    if (trimmed.length < 3) {
+      setUsernameCheck({ status: 'invalid', message: 'At least 3 characters' });
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,30}$/.test(trimmed)) {
+      setUsernameCheck({ status: 'invalid', message: 'Letters, numbers & _ only (max 30)' });
+      return;
+    }
+
+    setUsernameCheck({ status: 'checking', message: 'Checking availability...' });
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await tursoCheckUsernameAvailability(trimmed);
+        if (res.available) {
+          setUsernameCheck({ status: 'available', message: `@${trimmed} is available` });
+        } else {
+          setUsernameCheck({ status: 'taken', message: res.reason || `@${trimmed} is already taken` });
+        }
+      } catch (_) {
+        setUsernameCheck({ status: 'idle', message: '' });
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [username, isSignUp]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,6 +70,15 @@ export default function AuthScreen({ onLoginSuccess }) {
         throw new Error(
           "Turso is not configured yet. Please add VITE_TURSO_DATABASE_URL and VITE_TURSO_AUTH_TOKEN to your .env file."
         );
+      }
+
+      if (isSignUp && username.trim()) {
+        if (usernameCheck.status === 'taken') {
+          throw new Error(`The username @${username.trim()} is already taken. Please choose another.`);
+        }
+        if (usernameCheck.status === 'invalid') {
+          throw new Error(usernameCheck.message || "Invalid username format.");
+        }
       }
 
       let user;
@@ -126,14 +180,26 @@ export default function AuthScreen({ onLoginSuccess }) {
               </div>
 
               <div className="form-group">
-                <label>Unique Username (Optional)</label>
-                <div className="input-wrapper">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ margin: 0 }}>Unique Username (Optional)</label>
+                  {usernameCheck.status !== 'idle' && (
+                    <span className={`username-status-badge ${usernameCheck.status}`}>
+                      {usernameCheck.status === 'checking' && <i className="ph ph-spinner ph-spin"></i>}
+                      {usernameCheck.status === 'available' && <i className="ph-bold ph-check"></i>}
+                      {usernameCheck.status === 'taken' && <i className="ph-bold ph-x"></i>}
+                      {usernameCheck.status === 'invalid' && <i className="ph ph-warning-circle"></i>}
+                      <span>{usernameCheck.message}</span>
+                    </span>
+                  )}
+                </div>
+                <div className={`input-wrapper ${usernameCheck.status === 'available' ? 'input-success' : (usernameCheck.status === 'taken' || usernameCheck.status === 'invalid') ? 'input-error' : ''}`}>
                   <i className="ph ph-at"></i>
                   <input 
                     type="text" 
                     placeholder="e.g. roy or swapnil"
                     value={username}
                     onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    maxLength={30}
                   />
                 </div>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>

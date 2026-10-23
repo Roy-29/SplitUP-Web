@@ -157,6 +157,16 @@ export class LocalDatabase {
     );
   }
 
+  static isUsernameTaken(rawUsername, excludeUserId = null) {
+    if (!rawUsername) return false;
+    const clean = String(rawUsername).trim().toLowerCase().replace(/^@/, '');
+    const current = JSON.parse(localStorage.getItem('splitup_turso_user') || 'null');
+    if (current && String(current.id) !== String(excludeUserId) && current.username?.toLowerCase() === clean) {
+      return true;
+    }
+    return false;
+  }
+
   static clearData() {
     localStorage.removeItem('splitup_members');
     localStorage.removeItem('splitup_expenses');

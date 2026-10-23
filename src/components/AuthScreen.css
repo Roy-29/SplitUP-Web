@@ -165,6 +165,50 @@
   font-size: 1.2rem;
 }
 
+/* Username Availability Status Badges */
+.username-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  transition: all 0.2s ease;
+  line-height: 1.2;
+}
+
+.username-status-badge.checking {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.username-status-badge.available {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.username-status-badge.taken {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.username-status-badge.invalid {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.input-wrapper.input-success {
+  border-color: rgba(16, 185, 129, 0.5) !important;
+}
+
+.input-wrapper.input-error {
+  border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
 
 /* Mobile adjustments */
 @media (max-width: 480px) {
