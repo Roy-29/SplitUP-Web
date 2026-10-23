@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { LocalDatabase } from '../store/db';
 import { isTursoConfigured, tursoAddExpense, tursoAddPersonalExpense, tursoAddPersonalTopic } from '../lib/turso';
 import CustomSelect from './CustomSelect';
+import UserAvatar from './UserAvatar';
 import './Modal.css';
 
 const PERSONAL_CATEGORIES = [
@@ -51,11 +52,17 @@ export default function NewExpenseModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = () => {
+    const activeMembers = members.filter(m => String(m.groupId) === String(selectedGroupId));
+    const myMem = activeMembers.find(m => 
+      String(m.userId) === String(currentUser?.id) ||
+      String(m.id) === String(currentUser?.id) ||
+      (m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
+    );
     setForm({
       title: '',
       amount: '',
       notes: '',
-      selectedPayerId: currentUser ? currentUser.id : (members.length > 0 ? members[0].id : ''),
+      selectedPayerId: myMem ? myMem.id : (currentUser?.id || ''),
       selectedCategory: '',
       personalCategory: '',
       customCategoryName: '',
@@ -63,7 +70,7 @@ export default function NewExpenseModal({
       isNewTopic: false,
       newTopicName: '',
       isEqualSplit: true,
-      selectedMembers: new Set(members.map(m => m.id)),
+      selectedMembers: new Set(activeMembers.map(m => m.id)),
       customAmounts: {}
     });
     setError('');
@@ -157,6 +164,12 @@ export default function NewExpenseModal({
         return;
       }
 
+      if (!currentUser) {
+        setError('You must be logged in to add an expense.');
+        setIsSubmitting(false);
+        return;
+      }
+
       // Handle Group Expense - Category is optional (defaults to OTHER)
       const selectedCategory = form.selectedCategory || 'OTHER';
 
@@ -169,7 +182,20 @@ export default function NewExpenseModal({
       const activeMembers = members.filter(m => String(m.groupId) === String(selectedGroupId));
       const effectiveMembers = activeMembers.length > 0 ? activeMembers : members;
 
-      const payer = effectiveMembers.find(m => String(m.id) === String(form.selectedPayerId)) || effectiveMembers[0] || { id: currentUser?.id, name: currentUser?.name };
+      // Strict requirement: Only the logged-in user can add an expense as the payer
+      const myMemberRecord = effectiveMembers.find(m => 
+        String(m.userId) === String(currentUser?.id) ||
+        String(m.id) === String(currentUser?.id) ||
+        (m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
+      );
+
+      if (!myMemberRecord && activeMembers.length > 0) {
+        setError('Only members of this group can add expenses. You are not a member of this group.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const payer = myMemberRecord || { id: currentUser?.id, name: currentUser?.name };
       
       let participants = [];
       if (form.isEqualSplit) {
@@ -208,7 +234,8 @@ export default function NewExpenseModal({
         title: form.title.trim(),
         amount: amountValue,
         paidBy: payer.id,
-        payerName: payer.name,
+        paidByMemberId: payer.id,
+        payerName: currentUser?.name || payer.name,
         date: Date.now(),
         notes: form.notes.trim(),
         category: form.selectedCategory,
@@ -296,10 +323,15 @@ export default function NewExpenseModal({
                   onChange={newGid => {
                     setSelectedGroupId(newGid);
                     const groupMems = members.filter(m => String(m.groupId) === String(newGid));
+                    const myMem = groupMems.find(m => 
+                      String(m.userId) === String(currentUser?.id) ||
+                      String(m.id) === String(currentUser?.id) ||
+                      (m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
+                    );
                     setForm(prev => ({
                       ...prev,
                       selectedMembers: new Set(groupMems.map(m => m.id)),
-                      selectedPayerId: groupMems[0]?.id || currentUser?.id
+                      selectedPayerId: myMem ? myMem.id : (currentUser?.id || '')
                     }));
                   }}
                   options={groups.map(g => ({
@@ -468,18 +500,55 @@ export default function NewExpenseModal({
           {/* Group Expense Specific: Payer & Split */}
           {expenseType === 'GROUP' && (
             <>
+              {/* Group Expense Specific: Payer is strictly the logged-in user */}
               <div className="form-group">
-                <label>Paid by</label>
-                <CustomSelect 
-                  value={form.selectedPayerId}
-                  onChange={val => setForm(prev => ({ ...prev, selectedPayerId: val }))}
-                  options={displayMembers.map(m => ({
-                    value: m.id,
-                    label: `${m.name} ${m.id === currentUser?.id ? '(You)' : ''}`,
-                    icon: 'ph-user'
-                  }))}
-                  placeholder="Select who paid"
-                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ margin: 0 }}>Paid by</label>
+                  <span style={{ 
+                    fontSize: '0.74rem', 
+                    color: 'var(--accent-primary)', 
+                    fontWeight: 600, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px' 
+                  }}>
+                    <i className="ph ph-shield-check"></i> Authenticated Account
+                  </span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--glass-border)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserAvatar user={currentUser} size={34} fontSize="0.85rem" />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        {currentUser?.name} <span style={{ color: 'var(--accent-primary)', fontSize: '0.8rem' }}>(You)</span>
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                        @{currentUser?.username || currentUser?.email?.split('@')[0]}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    background: 'rgba(0, 191, 165, 0.12)',
+                    color: '#00bfa5',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontWeight: 600
+                  }}>
+                    Payer: You
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Only your logged-in account can record expenses you paid.
+                </div>
               </div>
 
               <div className="split-options">

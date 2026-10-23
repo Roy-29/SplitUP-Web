@@ -252,6 +252,14 @@ export default function GroupDetailsModal({
     )
   );
 
+  const isCurrentUserMember = Boolean(
+    currentUser && effectiveMembers.some(m => 
+      String(m.userId) === String(currentUser.id) ||
+      String(m.id) === String(currentUser.id) ||
+      (m.email && currentUser.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
+    )
+  );
+
   const handleAddRegisteredUser = async (targetUser) => {
     setIsSubmittingMember(true);
     setMemberError('');
@@ -577,10 +585,24 @@ export default function GroupDetailsModal({
           <button 
             type="button" 
             className="btn-primary" 
+            disabled={!isCurrentUserMember}
             onClick={() => {
+              if (!isCurrentUserMember) {
+                alert("Only members of this group can add expenses.");
+                return;
+              }
               onAddExpense?.('GROUP', group.id);
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'center' }}
+            title={isCurrentUserMember ? "Add an expense you paid" : "Only group members can add expenses"}
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              flex: 1, 
+              justifyContent: 'center',
+              opacity: isCurrentUserMember ? 1 : 0.6,
+              cursor: isCurrentUserMember ? 'pointer' : 'not-allowed'
+            }}
           >
             <i className="ph ph-plus"></i> Add Group Expense
           </button>

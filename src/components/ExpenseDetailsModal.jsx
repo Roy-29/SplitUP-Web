@@ -130,6 +130,18 @@ export default function ExpenseDetailsModal({
   const isPersonal = expense.isPersonal || expense.groupId === 'personal' || (!isSettlement && !expense.groupId);
   const isGroupExpense = !isSettlement && !isPersonal;
 
+  const isPayerOrCreator = Boolean(
+    currentUser && (
+      (expense.userId && String(expense.userId) === String(currentUser.id)) ||
+      (expense.paidBy && String(expense.paidBy) === String(currentUser.id)) ||
+      (expense.paidByMemberId && String(expense.paidByMemberId) === String(currentUser.id)) ||
+      (expense.payerName && currentUser.name && expense.payerName.toLowerCase() === currentUser.name.toLowerCase()) ||
+      (expense.fromMemberId && String(expense.fromMemberId) === String(currentUser.id)) ||
+      (expense.createdBy && String(expense.createdBy) === String(currentUser.id))
+    )
+  );
+  const canModify = isPersonal || isPayerOrCreator;
+
   const meta = getCategoryMeta(expense.category || 'General');
 
   const formatDate = (timestamp) => {
@@ -153,6 +165,16 @@ export default function ExpenseDetailsModal({
   };
 
   const handleDelete = async () => {
+    if (!canModify) {
+      await confirm({
+        title: 'Permission Denied',
+        message: 'Only the member who created or paid for this expense has permission to delete it.',
+        confirmText: 'Understood',
+        type: 'warning'
+      });
+      return;
+    }
+
     if (isSettlement) {
       const ok = await confirm({
         title: 'Delete Settlement?',
@@ -327,7 +349,7 @@ export default function ExpenseDetailsModal({
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {!isEditing && (
+            {!isEditing && canModify && (
               <button 
                 type="button" 
                 className="btn-icon" 
@@ -906,7 +928,7 @@ export default function ExpenseDetailsModal({
               flexWrap: 'wrap',
               gap: '10px'
             }}>
-              {((isSettlement && onDeleteSettlement) || (!isSettlement && onDeleteExpense)) ? (
+              {canModify && ((isSettlement && onDeleteSettlement) || (!isSettlement && onDeleteExpense)) ? (
                 <button
                   type="button"
                   className="btn-secondary"
@@ -927,21 +949,23 @@ export default function ExpenseDetailsModal({
               ) : <div />}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setIsEditing(true)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 16px',
-                    color: 'var(--text-primary)'
-                  }}
-                >
-                  <i className="ph ph-pencil-simple" style={{ color: 'var(--accent-primary)' }}></i>
-                  Edit
-                </button>
+                {canModify && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setIsEditing(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <i className="ph ph-pencil-simple" style={{ color: 'var(--accent-primary)' }}></i>
+                    Edit
+                  </button>
+                )}
 
                 <button type="button" className="btn-primary" onClick={onClose} style={{ padding: '8px 20px' }}>
                   Close
