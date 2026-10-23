@@ -1450,20 +1450,8 @@ export default function GroupDetailsModal({
                           );
                         })()}
 
-                        {/* Action buttons: Edit & Remove */}
+                        {/* Action buttons: Remove / Leave */}
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          {onUpdateMember && isCurrentUser && (
-                            <button
-                              type="button"
-                              className="btn-icon"
-                              onClick={() => handleStartEditMember(member)}
-                              style={{ width: '28px', height: '28px' }}
-                              title="Edit your member details"
-                            >
-                              <i className="ph ph-pencil-simple" style={{ fontSize: '0.85rem' }}></i>
-                            </button>
-                          )}
-
                           {onDeleteMember && (isCurrentUser || isGroupCreator) && (
                             <button
                               type="button"
