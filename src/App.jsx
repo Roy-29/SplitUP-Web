@@ -1145,7 +1145,7 @@ function App() {
               onDeleteMember={handleDeleteMember}
               onRefreshData={loadData}
               onAddExpense={(mode, grpId) => openExpenseModal(mode, grpId)}
-              onSettleUp={(grpId) => openSettleModal(grpId)}
+              onSettleUp={(grpId, debt) => openSettleModal(grpId, debt)}
               onDeleteExpense={handleDeleteExpense}
               onDeleteSettlement={handleDeleteSettlement}
               onSelectExpense={(item) => setSelectedExpenseForDetails(item)}

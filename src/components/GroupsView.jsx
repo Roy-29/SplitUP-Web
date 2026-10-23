@@ -116,9 +116,9 @@ export default function GroupsView({
           setSelectedGroupDetails(null);
           onAddExpense?.(mode, grpId);
         }}
-        onSettleUp={(grpId) => {
+        onSettleUp={(grpId, targetDebt) => {
           setSelectedGroupDetails(null);
-          onSettleUp?.(grpId);
+          onSettleUp?.(grpId, targetDebt);
         }}
         onShowQr={(grp) => {
           setSelectedQrGroup(grp);

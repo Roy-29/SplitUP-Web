@@ -312,24 +312,65 @@ export default function DashboardView({
               myDebts.map((debt, index) => {
                 const iOwe = isDebtor(debt, currentUser, members);
                 const targetName = iOwe ? debt.toMemberName : debt.fromMemberName;
-                const actionText = iOwe ? `Settle up with ${targetName}` : `Record payment from ${targetName}`;
-                const descText = iOwe ? `Paying ${targetName} ${formatCurrencyCompact(debt.amount)} will clear your debt.` 
-                                      : `${targetName} owes you ${formatCurrencyCompact(debt.amount)}.`;
+                const actionText = iOwe ? `Pay & settle with ${targetName}` : `Awaiting payment from ${targetName}`;
+                const descText = iOwe 
+                  ? `Paying ${targetName} ${formatCurrencyCompact(debt.amount)} will clear your debt.` 
+                  : `${targetName} owes you ${formatCurrencyCompact(debt.amount)} (Only debtor can settle).`;
                 
                 return (
                   <div 
                     key={index} 
                     className="activity-item" 
-                    style={{ background: 'rgba(108, 92, 231, 0.1)', borderColor: 'rgba(108, 92, 231, 0.2)', marginBottom: '12px', cursor: 'pointer' }}
-                    onClick={() => onSettleUpClick ? onSettleUpClick(debt.groupId, debt) : null}
+                    style={{ 
+                      background: iOwe ? 'rgba(108, 92, 231, 0.1)' : 'rgba(0, 184, 148, 0.08)', 
+                      borderColor: iOwe ? 'rgba(108, 92, 231, 0.25)' : 'rgba(0, 184, 148, 0.2)', 
+                      marginBottom: '12px', 
+                      cursor: iOwe ? 'pointer' : 'default',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                    onClick={() => (iOwe && onSettleUpClick) ? onSettleUpClick(debt.groupId, debt) : null}
                   >
-                    <div className="activity-icon" style={{ background: 'transparent', color: 'var(--accent-primary)' }}>
-                      <i className="ph ph-lightbulb"></i>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                      <div className="activity-icon" style={{ background: 'transparent', color: iOwe ? 'var(--accent-primary)' : 'var(--success)' }}>
+                        <i className={iOwe ? "ph ph-hand-coins" : "ph ph-clock"}></i>
+                      </div>
+                      <div className="activity-details">
+                        <h4>{actionText}</h4>
+                        <p>{descText}</p>
+                      </div>
                     </div>
-                    <div className="activity-details">
-                      <h4>{actionText}</h4>
-                      <p>{descText}</p>
-                    </div>
+                    {iOwe ? (
+                      <div style={{ marginLeft: '12px', flexShrink: 0 }}>
+                        <span style={{
+                          background: 'var(--accent-primary)',
+                          color: '#ffffff',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <i className="ph ph-arrow-right"></i> Pay
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ marginLeft: '12px', flexShrink: 0 }}>
+                        <span style={{
+                          background: 'rgba(0, 184, 148, 0.15)',
+                          color: 'var(--success)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          borderRadius: '6px'
+                        }}>
+                          Pending
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })

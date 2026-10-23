@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import { LocalDatabase } from '../store/db';
 import { isTursoConfigured, tursoAddSettlement } from '../lib/turso';
 import { formatSimple } from '../lib/CurrencyManager';
-import { isDebtor, isCreditor, matchesMember, findMemberKey, isMemberMatch } from '../lib/BalanceCalculator';
+import { isDebtor, matchesMember, isMemberMatch } from '../lib/BalanceCalculator';
 import { QRCodeCanvas } from 'qrcode.react';
 import MfsCheckoutModal from '../lib/mfs/MfsCheckoutModal';
 import CustomSelect from './CustomSelect';
+import UserAvatar from './UserAvatar';
 
 export default function SettleUpModal({ 
   isOpen, 
@@ -20,12 +21,9 @@ export default function SettleUpModal({
   members = [],
   initialTarget = null
 }) {
-  // Mode: 'PAY' (I am paying someone) | 'RECEIVE' (Someone paid me) | 'GROUP' (Between other members)
-  const [activeTab, setActiveTab] = useState('PAY');
   const [selectedGroupId, setSelectedGroupId] = useState(currentGroupId || (groups[0]?.id || ''));
 
-  // Form states
-  const [payerId, setPayerId] = useState('');
+  // Form states: Payer is strictly currentUser
   const [payeeId, setPayeeId] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('bKash');
@@ -34,6 +32,7 @@ export default function SettleUpModal({
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const [error, setError] = useState('');
+  const [isForbiddenTarget, setIsForbiddenTarget] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
   const [showQr, setShowQr] = useState(false);
@@ -56,10 +55,10 @@ export default function SettleUpModal({
            null;
   }, [groupMembers, currentUser]);
 
-  // Canonical current user identifier in this group (member ID if exists, otherwise user ID)
+  // Canonical current user identifier in this group
   const myCanonicalId = currentUserMember?.id || currentUser?.id;
 
-  // Filter debts for the selected group (or all if not group-specific)
+  // Filter debts for the selected group
   const relevantDebts = useMemo(() => {
     return (suggestedDebts || []).filter(d => {
       if (selectedGroupId && d.groupId && String(d.groupId) !== String(selectedGroupId)) {
@@ -69,17 +68,12 @@ export default function SettleUpModal({
     });
   }, [suggestedDebts, selectedGroupId]);
 
-  // Debts where current user is the debtor (I owe them)
+  // Debts where current user is strictly the debtor (I owe them)
   const debtsIOwe = useMemo(() => {
     return relevantDebts.filter(d => isDebtor(d, currentUser, groupMembers));
   }, [relevantDebts, currentUser, groupMembers]);
 
-  // Debts where current user is the creditor (They owe me)
-  const debtsOwedToMe = useMemo(() => {
-    return relevantDebts.filter(d => isCreditor(d, currentUser, groupMembers));
-  }, [relevantDebts, currentUser, groupMembers]);
-
-  // Initialize or reset form when modal opens or group/target changes
+  // Initialize form when modal opens or target changes
   useEffect(() => {
     if (!isOpen) return;
 
@@ -93,92 +87,54 @@ export default function SettleUpModal({
     setSelectedGroupId(targetGid);
 
     const targetGroupMembers = members.filter(m => String(m.groupId) === String(targetGid));
-    const userMemberInTargetGroup = targetGroupMembers.find(m => matchesMember(m, currentUser?.id)) ||
-                                   targetGroupMembers.find(m => matchesMember(m, currentUser?.email)) ||
-                                   targetGroupMembers.find(m => matchesMember(m, currentUser?.name));
-    const targetMyId = userMemberInTargetGroup?.id || currentUser?.id;
-
-    // Filter relevant debts for this target group
     const targetDebts = (suggestedDebts || []).filter(d => !targetGid || !d.groupId || String(d.groupId) === String(targetGid));
     const targetDebtsIOwe = targetDebts.filter(d => isDebtor(d, currentUser, targetGroupMembers));
-    const targetDebtsOwedToMe = targetDebts.filter(d => isCreditor(d, currentUser, targetGroupMembers));
 
     // If an initial target debt was passed
     if (initialTarget?.debt) {
       const d = initialTarget.debt;
-      const amDebtor = isDebtor(d, currentUser, targetGroupMembers);
-      const amCreditor = isCreditor(d, currentUser, targetGroupMembers);
-
-      if (amCreditor) {
-        setActiveTab('RECEIVE');
-        setPayerId(d.fromMemberId);
-        setPayeeId(targetMyId);
-        setAmount(String(d.amount));
-      } else {
-        setActiveTab('PAY');
-        setPayerId(targetMyId);
+      if (typeof d === 'object' && d.fromMemberId && d.toMemberId) {
+        const amDebtor = isDebtor(d, currentUser, targetGroupMembers);
+        if (!amDebtor) {
+          setError('Permission Denied: Only the debtor can settle and pay their own debt.');
+          setIsForbiddenTarget(true);
+          setPayeeId('');
+          setAmount('');
+          return;
+        }
+        setIsForbiddenTarget(false);
         setPayeeId(d.toMemberId);
         setAmount(String(d.amount));
+        return;
+      } else if (typeof d === 'string') {
+        setIsForbiddenTarget(false);
+        setPayeeId(d);
+        const matchingDebt = targetDebtsIOwe.find(deb => 
+          String(deb.toMemberId) === String(d) || isMemberMatch(deb.toMemberId, d, targetGroupMembers)
+        );
+        if (matchingDebt) {
+          setAmount(String(matchingDebt.amount));
+        } else {
+          setAmount('');
+        }
+        return;
       }
-      return;
     }
 
-    // Default mode setup based on debt balances
+    setIsForbiddenTarget(false);
+
+    // Default: choose first person currentUser owes
     if (targetDebtsIOwe.length > 0) {
-      setActiveTab('PAY');
-      setPayerId(targetMyId);
       setPayeeId(targetDebtsIOwe[0].toMemberId);
       setAmount(String(targetDebtsIOwe[0].amount));
-    } else if (targetDebtsOwedToMe.length > 0) {
-      setActiveTab('RECEIVE');
-      setPayerId(targetDebtsOwedToMe[0].fromMemberId);
-      setPayeeId(targetMyId);
-      setAmount(String(targetDebtsOwedToMe[0].amount));
     } else {
-      // No active debts for user in this group
-      setActiveTab('PAY');
-      setPayerId(targetMyId);
       const otherMember = targetGroupMembers.find(m => !matchesMember(m, currentUser?.id));
       setPayeeId(otherMember?.id || '');
       setAmount('');
     }
-  }, [isOpen, currentGroupId, initialTarget, groups, members]);
+  }, [isOpen, currentGroupId, initialTarget, groups, members, suggestedDebts, currentUser]);
 
-  // When switching tabs, update payer & payee accordingly
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    setError('');
-
-    if (tab === 'PAY') {
-      setPayerId(myCanonicalId);
-      if (debtsIOwe.length > 0) {
-        setPayeeId(debtsIOwe[0].toMemberId);
-        setAmount(String(debtsIOwe[0].amount));
-      } else {
-        const other = groupMembers.find(m => !matchesMember(m, currentUser?.id));
-        setPayeeId(other?.id || '');
-        setAmount('');
-      }
-    } else if (tab === 'RECEIVE') {
-      setPayeeId(myCanonicalId);
-      if (debtsOwedToMe.length > 0) {
-        setPayerId(debtsOwedToMe[0].fromMemberId);
-        setAmount(String(debtsOwedToMe[0].amount));
-      } else {
-        const other = groupMembers.find(m => !matchesMember(m, currentUser?.id));
-        setPayerId(other?.id || '');
-        setAmount('');
-      }
-    } else if (tab === 'GROUP') {
-      const first = groupMembers[0]?.id || '';
-      const second = groupMembers.find(m => String(m.id) !== String(first))?.id || '';
-      setPayerId(first);
-      setPayeeId(second);
-      setAmount('');
-    }
-  };
-
-  // Find recipient / payee member details for handles
+  // Recipient / payee member details
   const payeeMember = useMemo(() => {
     return groupMembers.find(m => 
       String(m.id) === String(payeeId) || 
@@ -187,23 +143,13 @@ export default function SettleUpModal({
     );
   }, [groupMembers, payeeId]);
 
-  // Find payer member details
-  const payerMember = useMemo(() => {
-    return groupMembers.find(m => 
-      String(m.id) === String(payerId) || 
-      String(m.userId) === String(payerId) ||
-      matchesMember(m, payerId)
-    );
-  }, [groupMembers, payerId]);
-
-  // Check matching outstanding debt between currently selected payer and payee
+  // Check matching outstanding debt that currentUser owes to currently selected payee
   const activeDebtBetween = useMemo(() => {
-    if (!payerId || !payeeId) return null;
-    return relevantDebts.find(d => 
-      (String(d.fromMemberId) === String(payerId) || isMemberMatch(d.fromMemberId, payerId, groupMembers)) &&
-      (String(d.toMemberId) === String(payeeId) || isMemberMatch(d.toMemberId, payeeId, groupMembers))
+    if (!payeeId) return null;
+    return debtsIOwe.find(d => 
+      String(d.toMemberId) === String(payeeId) || isMemberMatch(d.toMemberId, payeeId, groupMembers)
     );
-  }, [relevantDebts, payerId, payeeId, groupMembers]);
+  }, [debtsIOwe, payeeId, groupMembers]);
 
   const payeeBkash = payeeMember?.bkashNumber || payeeMember?.phone || '';
   const payeeNagad = payeeMember?.nagadNumber || '';
@@ -225,6 +171,11 @@ export default function SettleUpModal({
   };
 
   const submitSettlementRecord = async ({ customAmount = null, customMethod = null, customTrxId = null } = {}) => {
+    if (isForbiddenTarget) {
+      setError('Permission Denied: Only the debtor can settle and pay their own debt.');
+      return false;
+    }
+
     const finalAmount = parseFloat(customAmount !== null ? customAmount : amount);
 
     if (isNaN(finalAmount) || finalAmount <= 0) {
@@ -232,13 +183,8 @@ export default function SettleUpModal({
       return false;
     }
 
-    if (!payerId || !payeeId) {
-      setError('Please select both the payer and receiver.');
-      return false;
-    }
-
-    if (String(payerId) === String(payeeId)) {
-      setError('Payer and receiver cannot be the same member.');
+    if (!payeeId) {
+      setError('Please select who you are paying.');
       return false;
     }
 
@@ -248,27 +194,17 @@ export default function SettleUpModal({
                                  curGroupMembers.find(m => matchesMember(m, currentUser?.email)) ||
                                  curGroupMembers.find(m => matchesMember(m, currentUser?.name));
 
-    // Resolve canonical member IDs within the group
-    let resolvedPayerId = payerId;
-    let resolvedPayerName = '';
-    if (isMemberMatch(payerId, currentUser, members) || matchesMember(userMemberInCurGroup, payerId)) {
-      resolvedPayerId = userMemberInCurGroup?.id || currentUser.id;
-      resolvedPayerName = currentUser.name || userMemberInCurGroup?.name || 'Member';
-    } else {
-      const pMem = curGroupMembers.find(m => matchesMember(m, payerId));
-      resolvedPayerId = pMem?.id || payerId;
-      resolvedPayerName = pMem?.name || 'Member';
-    }
+    // Payer is strictly the logged in currentUser
+    const resolvedPayerId = userMemberInCurGroup?.id || currentUser.id;
+    const resolvedPayerName = currentUser.name || userMemberInCurGroup?.name || 'You';
 
-    let resolvedPayeeId = payeeId;
-    let resolvedPayeeName = '';
-    if (isMemberMatch(payeeId, currentUser, members) || matchesMember(userMemberInCurGroup, payeeId)) {
-      resolvedPayeeId = userMemberInCurGroup?.id || currentUser.id;
-      resolvedPayeeName = currentUser.name || userMemberInCurGroup?.name || 'Member';
-    } else {
-      const recMem = curGroupMembers.find(m => matchesMember(m, payeeId));
-      resolvedPayeeId = recMem?.id || payeeId;
-      resolvedPayeeName = recMem?.name || 'Member';
+    const recMem = curGroupMembers.find(m => matchesMember(m, payeeId));
+    const resolvedPayeeId = recMem?.id || payeeId;
+    const resolvedPayeeName = recMem?.name || payeeMember?.name || 'Member';
+
+    if (String(resolvedPayerId) === String(resolvedPayeeId)) {
+      setError('You cannot record a payment to yourself.');
+      return false;
     }
 
     const settlementTimestamp = date ? new Date(date).getTime() : Date.now();
@@ -329,7 +265,7 @@ export default function SettleUpModal({
             <div>
               <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Settle Up</h2>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Record debt clearance & payment
+                Pay and clear your outstanding debt
               </div>
             </div>
           </div>
@@ -343,516 +279,447 @@ export default function SettleUpModal({
           </button>
         </div>
 
-        {/* Direction Navigation Tabs */}
-        <div style={{
-          display: 'flex',
-          background: 'var(--bg-tertiary)',
-          padding: '3px',
-          borderRadius: '10px',
-          marginBottom: '16px',
-          border: '1px solid var(--glass-border)'
-        }}>
-          <button
-            type="button"
-            className={`toggle-btn ${activeTab === 'PAY' ? 'active' : ''}`}
-            onClick={() => handleTabChange('PAY')}
-            style={{ flex: 1, padding: '7px 4px', fontSize: '0.82rem', borderRadius: '8px' }}
-          >
-            I am paying
-          </button>
-          <button
-            type="button"
-            className={`toggle-btn ${activeTab === 'RECEIVE' ? 'active' : ''}`}
-            onClick={() => handleTabChange('RECEIVE')}
-            style={{ flex: 1, padding: '7px 4px', fontSize: '0.82rem', borderRadius: '8px' }}
-          >
-            I received
-          </button>
-          <button
-            type="button"
-            className={`toggle-btn ${activeTab === 'GROUP' ? 'active' : ''}`}
-            onClick={() => handleTabChange('GROUP')}
-            style={{ flex: 1, padding: '7px 4px', fontSize: '0.82rem', borderRadius: '8px' }}
-          >
-            Group members
-          </button>
-        </div>
-
         {error && (
           <div className="error-message" style={{ marginBottom: '14px' }}>
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="modal-form">
-          {/* Group Selector if multiple groups exist */}
-          {groups.length > 1 && (
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '0.82rem' }}>Group</label>
+        {isForbiddenTarget ? (
+          <div style={{
+            padding: '20px 16px',
+            background: 'rgba(235, 77, 75, 0.12)',
+            border: '1px solid rgba(235, 77, 75, 0.3)',
+            borderRadius: '12px',
+            color: 'var(--danger)',
+            textAlign: 'center',
+            marginBottom: '16px'
+          }}>
+            <i className="ph ph-warning-circle" style={{ fontSize: '2rem', marginBottom: '8px', display: 'inline-block' }}></i>
+            <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700 }}>Debtor Authorization Required</h4>
+            <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Only the debtor whose debt it is can settle and pay this amount. You cannot record or settle debts on behalf of other members.
+            </p>
+            <div style={{ marginTop: '16px' }}>
+              <button type="button" className="btn-secondary" onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="modal-form">
+            {/* Group Selector if multiple groups exist */}
+            {groups.length > 1 && (
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '0.82rem' }}>Group</label>
+                <CustomSelect 
+                  value={selectedGroupId}
+                  onChange={gid => setSelectedGroupId(gid)}
+                  options={groups.map(g => ({
+                    value: g.id,
+                    label: g.name,
+                    icon: 'ph-users-three'
+                  }))}
+                  placeholder="Select Group"
+                />
+              </div>
+            )}
+
+            {/* Payer Card (Strictly Current User) */}
+            <div className="form-group" style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                Payer (Debtor)
+              </label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <UserAvatar user={currentUser} size={36} />
+                  <div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {currentUser?.name || 'You'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      @{currentUser?.username || currentUser?.email?.split('@')[0]}
+                    </div>
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: '0.72rem',
+                  background: 'rgba(0, 184, 148, 0.15)',
+                  color: 'var(--success)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  fontWeight: 600
+                }}>
+                  Active Payer ✓
+                </span>
+              </div>
+            </div>
+
+            {/* Payee Selection (Who are you paying?) */}
+            <div className="form-group">
+              <label style={{ fontSize: '0.82rem' }}>Who are you paying?</label>
               <CustomSelect 
-                value={selectedGroupId}
-                onChange={gid => setSelectedGroupId(gid)}
-                options={groups.map(g => ({
-                  value: g.id,
-                  label: g.name,
-                  icon: 'ph-users-three'
-                }))}
-                placeholder="Select Group"
+                value={payeeId}
+                onChange={pid => {
+                  setPayeeId(pid);
+                  const matchingDebt = debtsIOwe.find(d => 
+                    String(d.toMemberId) === String(pid) || isMemberMatch(d.toMemberId, pid, groupMembers)
+                  );
+                  if (matchingDebt) {
+                    setAmount(String(matchingDebt.amount));
+                  }
+                }}
+                options={groupMembers
+                  .filter(m => !matchesMember(m, currentUser?.id))
+                  .map(m => {
+                    const debt = debtsIOwe.find(d => 
+                      String(d.toMemberId) === String(m.id) || isMemberMatch(d.toMemberId, m.id, groupMembers)
+                    );
+                    return {
+                      value: m.id,
+                      label: m.name,
+                      sublabel: debt ? `You owe ${formatSimple(debt.amount, currencyCode)}` : null,
+                      icon: 'ph-user'
+                    };
+                  })}
+                placeholder="Select recipient member"
               />
             </div>
-          )}
 
-          {/* TAB 1: PAY DEBT (Current user is paying) */}
-          {activeTab === 'PAY' && (
-            <>
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Who are you paying?</label>
-                <CustomSelect 
-                  value={payeeId}
-                  onChange={pid => {
-                    setPayeeId(pid);
-                    const matchingDebt = debtsIOwe.find(d => 
-                      String(d.toMemberId) === String(pid) || isMemberMatch(d.toMemberId, pid, groupMembers)
-                    );
-                    if (matchingDebt) {
-                      setAmount(String(matchingDebt.amount));
-                    }
-                  }}
-                  options={groupMembers
-                    .filter(m => !matchesMember(m, currentUser?.id))
-                    .map(m => {
-                      const debt = debtsIOwe.find(d => 
-                        String(d.toMemberId) === String(m.id) || isMemberMatch(d.toMemberId, m.id, groupMembers)
-                      );
-                      return {
-                        value: m.id,
-                        label: m.name,
-                        sublabel: debt ? `You owe ${formatSimple(debt.amount, currencyCode)}` : null,
-                        icon: 'ph-user'
-                      };
-                    })}
-                  placeholder="Select member"
-                />
-              </div>
-
-              {/* Outstanding Debt Info Pill */}
-              {activeDebtBetween && (
-                <div style={{
-                  background: 'rgba(235, 77, 75, 0.08)',
-                  border: '1px solid rgba(235, 77, 75, 0.25)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  marginBottom: '12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Total outstanding debt to <strong>{payeeMember?.name}</strong>:
-                  </div>
-                  <div style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '0.95rem' }}>
-                    {formatSimple(activeDebtBetween.amount, currencyCode)}
-                  </div>
+            {/* Outstanding Debt Info Pill */}
+            {activeDebtBetween && (
+              <div style={{
+                background: 'rgba(235, 77, 75, 0.08)',
+                border: '1px solid rgba(235, 77, 75, 0.25)',
+                borderRadius: '10px',
+                padding: '8px 12px',
+                marginBottom: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Total debt you owe to <strong>{payeeMember?.name}</strong>:
                 </div>
-              )}
-            </>
-          )}
-
-          {/* TAB 2: RECEIVE PAYMENT (Current user received money) */}
-          {activeTab === 'RECEIVE' && (
-            <>
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Who paid you?</label>
-                <CustomSelect 
-                  value={payerId}
-                  onChange={pid => {
-                    setPayerId(pid);
-                    const matchingDebt = debtsOwedToMe.find(d => 
-                      String(d.fromMemberId) === String(pid) || isMemberMatch(d.fromMemberId, pid, groupMembers)
-                    );
-                    if (matchingDebt) {
-                      setAmount(String(matchingDebt.amount));
-                    }
-                  }}
-                  options={groupMembers
-                    .filter(m => !matchesMember(m, currentUser?.id))
-                    .map(m => {
-                      const debt = debtsOwedToMe.find(d => 
-                        String(d.fromMemberId) === String(m.id) || isMemberMatch(d.fromMemberId, m.id, groupMembers)
-                      );
-                      return {
-                        value: m.id,
-                        label: m.name,
-                        sublabel: debt ? `Owes you ${formatSimple(debt.amount, currencyCode)}` : null,
-                        icon: 'ph-user'
-                      };
-                    })}
-                  placeholder="Select who paid you"
-                />
-              </div>
-
-              {/* Outstanding Debt Info Pill */}
-              {activeDebtBetween && (
-                <div style={{
-                  background: 'rgba(0, 184, 148, 0.08)',
-                  border: '1px solid rgba(0, 184, 148, 0.25)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  marginBottom: '12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <strong>{payerMember?.name}</strong> owes you:
-                  </div>
-                  <div style={{ fontWeight: 800, color: 'var(--success)', fontSize: '0.95rem' }}>
-                    {formatSimple(activeDebtBetween.amount, currencyCode)}
-                  </div>
+                <div style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '0.95rem' }}>
+                  {formatSimple(activeDebtBetween.amount, currencyCode)}
                 </div>
-              )}
-            </>
-          )}
-
-          {/* TAB 3: GROUP MEMBERS (Alice paid Bob) */}
-          {activeTab === 'GROUP' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '8px' }}>
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Who Paid?</label>
-                <CustomSelect 
-                  value={payerId}
-                  onChange={val => setPayerId(val)}
-                  options={groupMembers.map(m => ({
-                    value: m.id,
-                    label: matchesMember(m, currentUser?.id) ? `${m.name} (You)` : m.name,
-                    icon: 'ph-user'
-                  }))}
-                  placeholder="Payer"
-                />
               </div>
+            )}
 
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Who Received?</label>
-                <CustomSelect 
-                  value={payeeId}
-                  onChange={val => setPayeeId(val)}
-                  options={groupMembers
-                    .filter(m => String(m.id) !== String(payerId))
-                    .map(m => ({
-                      value: m.id,
-                      label: matchesMember(m, currentUser?.id) ? `${m.name} (You)` : m.name,
-                      icon: 'ph-user'
-                    }))}
-                  placeholder="Receiver"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Payee MFS Info Box (Shown when user is paying someone) */}
-          {activeTab === 'PAY' && payeeMember && (
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              marginBottom: '14px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  {payeeMember.name}'s Payment Handles
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowQr(!showQr)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--accent-primary)',
-                    fontSize: '0.76rem',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <i className="ph ph-qr-code"></i>
-                  {showQr ? 'Hide QR' : 'Show QR'}
-                </button>
-              </div>
-
-              {showQr && (
-                <div style={{ textAlign: 'center', padding: '10px 0', background: '#ffffff', borderRadius: '8px', margin: '8px 0' }}>
-                  <QRCodeCanvas 
-                    value={`SplitUP Pay: ${payeeBkash || payeeNagad || payeeMember.name} - Amount: ${amount || 0}`}
-                    size={130}
-                    level="M"
-                  />
-                  <p style={{ margin: '6px 0 0', color: '#333333', fontSize: '0.7rem' }}>
-                    Scan via bKash / Nagad App
-                  </p>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {/* bKash row */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E2136E' }}></span>
-                    <strong>bKash:</strong> {payeeBkash || 'Contact friend'}
+            {/* Payee MFS Info Box */}
+            {payeeMember && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                marginBottom: '14px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    {payeeMember.name}'s Payment Handles
                   </span>
-                  {payeeBkash ? (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(payeeBkash, 'bkash')}
-                      className="btn-secondary"
-                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                    >
-                      {copiedField === 'bkash' ? '✓ Copied' : 'Copy'}
-                    </button>
-                  ) : (
-                    <a 
-                      href="tel:*247%23" 
-                      style={{ fontSize: '0.72rem', color: '#E2136E', textDecoration: 'none', fontWeight: 600 }}
-                      title="Dial bKash USSD"
-                    >
-                      Dial *247#
-                    </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowQr(!showQr)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent-primary)',
+                      fontSize: '0.76rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="ph ph-qr-code"></i>
+                    {showQr ? 'Hide QR' : 'Show QR'}
+                  </button>
+                </div>
+
+                {showQr && (
+                  <div style={{ textAlign: 'center', padding: '10px 0', background: '#ffffff', borderRadius: '8px', margin: '8px 0' }}>
+                    <QRCodeCanvas 
+                      value={`SplitUP Pay: ${payeeBkash || payeeNagad || payeeMember.name} - Amount: ${amount || 0}`}
+                      size={130}
+                      level="M"
+                    />
+                    <p style={{ margin: '6px 0 0', color: '#333333', fontSize: '0.7rem' }}>
+                      Scan via bKash / Nagad App
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* bKash row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E2136E' }}></span>
+                      <strong>bKash:</strong> {payeeBkash || 'Ask member for number'}
+                    </span>
+                    {payeeBkash ? (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(payeeBkash, 'bkash')}
+                        className="btn-secondary"
+                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                      >
+                        {copiedField === 'bkash' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    ) : (
+                      <a 
+                        href="tel:*247%23" 
+                        style={{ fontSize: '0.72rem', color: '#E2136E', textDecoration: 'none', fontWeight: 600 }}
+                        title="Dial bKash USSD"
+                      >
+                        Dial *247#
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Nagad row */}
+                  {payeeNagad && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F7941D' }}></span>
+                        <strong>Nagad:</strong> {payeeNagad}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(payeeNagad, 'nagad')}
+                        className="btn-secondary"
+                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                      >
+                        {copiedField === 'nagad' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Rocket row */}
+                  {payeeRocket && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8C3494' }}></span>
+                        <strong>Rocket:</strong> {payeeRocket}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(payeeRocket, 'rocket')}
+                        className="btn-secondary"
+                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                      >
+                        {copiedField === 'rocket' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {/* Nagad row */}
-                {payeeNagad && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F7941D' }}></span>
-                      <strong>Nagad:</strong> {payeeNagad}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(payeeNagad, 'nagad')}
-                      className="btn-secondary"
-                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                    >
-                      {copiedField === 'nagad' ? '✓ Copied' : 'Copy'}
-                    </button>
-                  </div>
-                )}
-
-                {/* Rocket row */}
-                {payeeRocket && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8C3494' }}></span>
-                      <strong>Rocket:</strong> {payeeRocket}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(payeeRocket, 'rocket')}
-                      className="btn-secondary"
-                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                    >
-                      {copiedField === 'rocket' ? '✓ Copied' : 'Copy'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick API Gateway Buttons */}
-              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMfsGatewayProvider('BKASH');
-                    setIsMfsGatewayOpen(true);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '7px 8px',
-                    background: '#E2136E',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px'
-                  }}
-                >
-                  <i className="ph ph-lightning"></i>
-                  <span>bKash API</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMfsGatewayProvider('NAGAD');
-                    setIsMfsGatewayOpen(true);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '7px 8px',
-                    background: '#F7941D',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px'
-                  }}
-                >
-                  <i className="ph ph-wallet"></i>
-                  <span>Nagad API</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Amount input with quick fill buttons */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label style={{ fontSize: '0.82rem' }}>Payment Amount</label>
-              {activeDebtBetween && activeDebtBetween.amount > 0 && (
-                <div style={{ display: 'flex', gap: '6px' }}>
+                {/* Quick Simulated Gateway Buttons */}
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => setAmount(String(activeDebtBetween.amount))}
+                    onClick={() => {
+                      setMfsGatewayProvider('BKASH');
+                      setIsMfsGatewayOpen(true);
+                    }}
                     style={{
-                      background: 'rgba(108, 92, 231, 0.15)',
-                      border: '1px solid rgba(108, 92, 231, 0.3)',
-                      color: 'var(--accent-primary)',
-                      borderRadius: '6px',
-                      padding: '2px 8px',
-                      fontSize: '0.72rem',
+                      flex: 1,
+                      padding: '7px 8px',
+                      background: '#E2136E',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
                       cursor: 'pointer',
-                      fontWeight: 600
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px'
                     }}
                   >
-                    Full ({formatSimple(activeDebtBetween.amount, currencyCode)})
+                    <i className="ph ph-lightning"></i>
+                    <span>bKash API</span>
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => setAmount(String(Number((activeDebtBetween.amount / 2).toFixed(2))))}
+                    onClick={() => {
+                      setMfsGatewayProvider('NAGAD');
+                      setIsMfsGatewayOpen(true);
+                    }}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-secondary)',
-                      borderRadius: '6px',
-                      padding: '2px 8px',
-                      fontSize: '0.72rem',
-                      cursor: 'pointer'
+                      flex: 1,
+                      padding: '7px 8px',
+                      background: '#F7941D',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px'
                     }}
                   >
-                    50%
+                    <i className="ph ph-wallet"></i>
+                    <span>Nagad API</span>
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            <input 
-              type="number" 
-              step="0.01"
-              min="0.01"
-              placeholder="0.00"
-              value={amount} 
-              onKeyDown={e => {
-                if (['+', '-', 'e', 'E'].includes(e.key)) {
-                  e.preventDefault();
-                }
-              }}
-              onChange={e => {
-                const val = e.target.value.replace(/[+\-eE]/g, '');
-                setAmount(val);
-              }} 
-              required
-              style={{ fontSize: '1.15rem', fontWeight: 700 }}
-            />
-          </div>
-
-          {/* Payment Method & Date row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+            {/* Amount input with quick fill buttons */}
             <div className="form-group">
-              <label style={{ fontSize: '0.82rem' }}>Payment Method</label>
-              <CustomSelect 
-                value={paymentMethod}
-                onChange={val => setPaymentMethod(val)}
-                options={[
-                  { value: 'bKash', label: 'bKash', icon: '🌸' },
-                  { value: 'Nagad', label: 'Nagad', icon: '🟠' },
-                  { value: 'Rocket', label: 'Rocket', icon: '🟣' },
-                  { value: 'Upay', label: 'Upay', icon: '🟢' },
-                  { value: 'Cash', label: 'Cash', icon: '💵' },
-                  { value: 'Bank Transfer', label: 'Bank / CellFin', icon: '🏦' },
-                  { value: 'Other', label: 'Other', icon: '💳' }
-                ]}
-                placeholder="Payment Method"
-              />
-            </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.82rem' }}>Payment Amount</label>
+                {activeDebtBetween && activeDebtBetween.amount > 0 && (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(activeDebtBetween.amount))}
+                      style={{
+                        background: 'rgba(108, 92, 231, 0.15)',
+                        border: '1px solid rgba(108, 92, 231, 0.3)',
+                        color: 'var(--accent-primary)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      Full ({formatSimple(activeDebtBetween.amount, currencyCode)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(Number((activeDebtBetween.amount / 2).toFixed(2))))}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-secondary)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      50%
+                    </button>
+                  </div>
+                )}
+              </div>
 
-            <div className="form-group">
-              <label style={{ fontSize: '0.82rem' }}>Date</label>
               <input 
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
+                type="number" 
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={amount} 
+                onKeyDown={e => {
+                  if (['+', '-', 'e', 'E'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+                onChange={e => {
+                  const val = e.target.value.replace(/[+\-eE]/g, '');
+                  setAmount(val);
+                }} 
                 required
-              />
-            </div>
-          </div>
-
-          {/* Transaction ID & Note */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div className="form-group">
-              <label style={{ fontSize: '0.82rem' }}>TrxID <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
-              <input 
-                type="text"
-                placeholder="e.g. BL9A82XJ1"
-                value={trxId}
-                onChange={e => setTrxId(e.target.value)}
+                style={{ fontSize: '1.15rem', fontWeight: 700 }}
               />
             </div>
 
-            <div className="form-group">
-              <label style={{ fontSize: '0.82rem' }}>Note <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
-              <input 
-                type="text"
-                placeholder="e.g. Lunch split"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-              />
-            </div>
-          </div>
+            {/* Payment Method & Date row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label style={{ fontSize: '0.82rem' }}>Payment Method</label>
+                <CustomSelect 
+                  value={paymentMethod}
+                  onChange={val => setPaymentMethod(val)}
+                  options={[
+                    { value: 'bKash', label: 'bKash', icon: '🌸' },
+                    { value: 'Nagad', label: 'Nagad', icon: '🟠' },
+                    { value: 'Rocket', label: 'Rocket', icon: '🟣' },
+                    { value: 'Upay', label: 'Upay', icon: '🟢' },
+                    { value: 'Cash', label: 'Cash', icon: '💵' },
+                    { value: 'Bank Transfer', label: 'Bank / CellFin', icon: '🏦' },
+                    { value: 'Other', label: 'Other', icon: '💳' }
+                  ]}
+                  placeholder="Payment Method"
+                />
+              </div>
 
-          {/* Footer buttons */}
-          <div className="modal-footer" style={{ marginTop: '16px' }}>
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={isSubmitting}
-              style={{ 
-                background: 'var(--success)', 
-                boxShadow: '0 4px 15px rgba(0, 184, 148, 0.3)',
-                minWidth: '160px'
-              }}
-            >
-              {isSubmitting ? (
-                'Recording...'
-              ) : (
-                `Settle ${amount ? formatSimple(Number(amount), currencyCode) : ''}`
-              )}
-            </button>
-          </div>
-        </form>
+              <div className="form-group">
+                <label style={{ fontSize: '0.82rem' }}>Date</label>
+                <input 
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Transaction ID & Note */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label style={{ fontSize: '0.82rem' }}>TrxID <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
+                <input 
+                  type="text"
+                  placeholder="e.g. BL9A82XJ1"
+                  value={trxId}
+                  onChange={e => setTrxId(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontSize: '0.82rem' }}>Note <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
+                <input 
+                  type="text"
+                  placeholder="e.g. Lunch split"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="modal-footer" style={{ marginTop: '16px' }}>
+              <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                disabled={isSubmitting}
+                style={{ 
+                  background: 'var(--success)', 
+                  boxShadow: '0 4px 15px rgba(0, 184, 148, 0.3)',
+                  minWidth: '160px'
+                }}
+              >
+                {isSubmitting ? (
+                  'Recording...'
+                ) : (
+                  `Pay & Settle ${amount ? formatSimple(Number(amount), currencyCode) : ''}`
+                )}
+              </button>
+            </div>
+          </form>
+        )}
 
         {/* Interactive Simulated Gateway Checkout */}
         <MfsCheckoutModal 

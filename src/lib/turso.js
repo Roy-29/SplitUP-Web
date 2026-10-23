@@ -1100,6 +1100,22 @@ export async function tursoAddSettlement(settlement) {
   if (!tursoClient) throw new Error("Turso client is not initialized.");
   await initTursoTables();
 
+  // Strict check: Only the user whose ID it is can settle and pay their own debt
+  const loggedUser = tursoGetCurrentUser();
+  if (loggedUser) {
+    const memCheck = await tursoClient.execute({
+      sql: 'SELECT id, userId FROM members WHERE id = ? LIMIT 1;',
+      args: [String(settlement.paidBy)]
+    });
+    const payerUserId = memCheck.rows.length > 0 && memCheck.rows[0].userId 
+      ? String(memCheck.rows[0].userId) 
+      : String(settlement.paidBy);
+
+    if (String(payerUserId) !== String(loggedUser.id)) {
+      throw new Error("Permission Denied: Only the debtor can settle and pay their own debt.");
+    }
+  }
+
   const id = settlement.id || `stl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   await tursoClient.execute({

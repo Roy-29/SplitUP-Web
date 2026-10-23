@@ -1360,30 +1360,39 @@ export default function GroupDetailsModal({
                           </div>
                         </div>
 
-                        {/* Quick Settle button if balance != 0 */}
-                        {Math.abs(b.netBalance) > 0.01 && onSettleUp && (
-                          <button
-                            type="button"
-                            onClick={() => onSettleUp(group.id, member.id)}
-                            style={{
-                              background: 'rgba(0, 184, 148, 0.15)',
-                              border: '1px solid rgba(0, 184, 148, 0.3)',
-                              color: 'var(--success)',
-                              borderRadius: '6px',
-                              padding: '4px 8px',
-                              fontSize: '0.72rem',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '3px'
-                            }}
-                            title="Settle balance with this member"
-                          >
-                            <i className="ph ph-handshake"></i>
-                            <span>Settle</span>
-                          </button>
-                        )}
+                        {/* Quick Pay button ONLY if currentUser owes money to this member */}
+                        {(() => {
+                          const debtIOweThisMember = !isCurrentUser ? groupDebts.find(d => 
+                            isDebtor(d, currentUser, effectiveMembers) && 
+                            (matchesMember(member, d.toMemberId) || String(d.toMemberId) === String(member.id))
+                          ) : null;
+
+                          if (!debtIOweThisMember || !onSettleUp) return null;
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onSettleUp(group.id, debtIOweThisMember)}
+                              style={{
+                                background: 'rgba(0, 184, 148, 0.15)',
+                                border: '1px solid rgba(0, 184, 148, 0.3)',
+                                color: 'var(--success)',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={`Pay ${formatSimple(debtIOweThisMember.amount, currencyCode)} to ${member.name}`}
+                            >
+                              <i className="ph ph-hand-coins"></i>
+                              <span>Pay {formatSimple(debtIOweThisMember.amount, currencyCode)}</span>
+                            </button>
+                          );
+                        })()}
 
                         {/* Action buttons: Edit & Remove */}
                         <div style={{ display: 'flex', gap: '4px' }}>
@@ -1474,7 +1483,7 @@ export default function GroupDetailsModal({
                           <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                             {formatSimple(debt.amount, currencyCode)}
                           </span>
-                          {onSettleUp && (
+                          {iAmDebtor && onSettleUp && (
                             <button
                               type="button"
                               className="btn-primary"
@@ -1483,11 +1492,33 @@ export default function GroupDetailsModal({
                                 padding: '4px 12px', 
                                 fontSize: '0.78rem', 
                                 height: '28px',
-                                background: iAmDebtor ? 'var(--danger)' : (iAmCreditor ? 'var(--success)' : 'var(--accent-primary)')
+                                background: 'var(--accent-primary)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
                               }}
+                              title={`Pay ${formatSimple(debt.amount, currencyCode)} to ${debt.toMemberName}`}
                             >
-                              {iAmDebtor ? 'Settle' : (iAmCreditor ? 'Record Paid' : 'Settle')}
+                              <i className="ph ph-hand-coins"></i>
+                              <span>Pay</span>
                             </button>
+                          )}
+                          {iAmCreditor && (
+                            <span 
+                              style={{ 
+                                padding: '4px 8px', 
+                                fontSize: '0.74rem', 
+                                borderRadius: '6px',
+                                background: 'rgba(0, 184, 148, 0.12)',
+                                color: 'var(--success)',
+                                fontWeight: 600,
+                                border: '1px solid rgba(0, 184, 148, 0.25)'
+                              }}
+                              title={`Awaiting ${debt.fromMemberName} to pay and settle this debt`}
+                            >
+                              Awaiting payment
+                            </span>
                           )}
                         </div>
                       </div>
