@@ -425,6 +425,59 @@ export async function tursoDeleteExpense(expenseId) {
   });
 }
 
+export async function tursoUpdateExpense(expenseId, fields = {}) {
+  if (!tursoClient || !expenseId) return;
+  await initTursoTables();
+
+  const setClauses = [];
+  const args = [];
+
+  if (fields.title !== undefined) {
+    setClauses.push('title = ?');
+    args.push(fields.title.trim());
+  }
+  if (fields.amount !== undefined) {
+    setClauses.push('amount = ?');
+    args.push(Number(fields.amount));
+  }
+  if (fields.category !== undefined) {
+    setClauses.push('category = ?');
+    args.push(fields.category);
+  }
+  if (fields.date !== undefined) {
+    setClauses.push('date = ?');
+    args.push(Number(fields.date));
+  }
+  if (fields.notes !== undefined) {
+    setClauses.push('notes = ?');
+    args.push(fields.notes);
+  }
+  if (fields.topic !== undefined) {
+    setClauses.push('topic = ?');
+    args.push(fields.topic ? fields.topic.trim() : '');
+  }
+  if (fields.paidBy !== undefined) {
+    setClauses.push('paidBy = ?');
+    args.push(String(fields.paidBy));
+  }
+  if (fields.paidByMemberId !== undefined) {
+    setClauses.push('paidByMemberId = ?');
+    args.push(String(fields.paidByMemberId));
+  }
+  if (fields.participants !== undefined) {
+    setClauses.push('participants = ?');
+    args.push(typeof fields.participants === 'string' ? fields.participants : JSON.stringify(fields.participants || []));
+  }
+
+  if (setClauses.length === 0) return;
+
+  args.push(String(expenseId));
+  await tursoClient.execute({
+    sql: `UPDATE expenses SET ${setClauses.join(', ')} WHERE id = ?;`,
+    args
+  });
+}
+
 // ----------------- Personal Topics Operations -----------------
 
 export async function tursoGetPersonalTopics(userOrId = null) {
@@ -493,6 +546,43 @@ export async function tursoDeletePersonalTopic(topicId) {
   });
 }
 
+export async function tursoUpdatePersonalTopic(topicId, fields = {}) {
+  if (!tursoClient || !topicId) return;
+  await initTursoTables();
+
+  const setClauses = [];
+  const args = [];
+
+  if (fields.name !== undefined) {
+    setClauses.push('name = ?');
+    args.push(fields.name.trim());
+  }
+  if (fields.description !== undefined) {
+    setClauses.push('description = ?');
+    args.push(fields.description.trim());
+  }
+  if (fields.budget !== undefined) {
+    setClauses.push('budget = ?');
+    args.push(Number(fields.budget || 0));
+  }
+  if (fields.icon !== undefined) {
+    setClauses.push('icon = ?');
+    args.push(fields.icon);
+  }
+  if (fields.color !== undefined) {
+    setClauses.push('color = ?');
+    args.push(fields.color);
+  }
+
+  if (setClauses.length === 0) return;
+
+  args.push(String(topicId));
+  await tursoClient.execute({
+    sql: `UPDATE personal_topics SET ${setClauses.join(', ')} WHERE id = ?;`,
+    args
+  });
+}
+
 // ----------------- Settlements Operations -----------------
 
 export async function tursoGetSettlements(groupId = null) {
@@ -547,6 +637,47 @@ export async function tursoDeleteSettlement(settlementId) {
   await tursoClient.execute({
     sql: 'DELETE FROM settlements WHERE id = ?;',
     args: [String(settlementId)]
+  });
+}
+
+export async function tursoUpdateSettlement(settlementId, fields = {}) {
+  if (!tursoClient || !settlementId) return;
+  await initTursoTables();
+
+  const setClauses = [];
+  const args = [];
+
+  if (fields.amount !== undefined) {
+    setClauses.push('amount = ?');
+    args.push(Number(fields.amount));
+  }
+  if (fields.date !== undefined) {
+    setClauses.push('date = ?');
+    args.push(Number(fields.date));
+  }
+  if (fields.paymentMethod !== undefined) {
+    setClauses.push('paymentMethod = ?');
+    args.push(fields.paymentMethod);
+  }
+  if (fields.trxId !== undefined) {
+    setClauses.push('trxId = ?');
+    args.push(fields.trxId ? fields.trxId.trim() : null);
+  }
+  if (fields.paidBy !== undefined) {
+    setClauses.push('paidBy = ?');
+    args.push(String(fields.paidBy));
+  }
+  if (fields.paidTo !== undefined) {
+    setClauses.push('paidTo = ?');
+    args.push(String(fields.paidTo));
+  }
+
+  if (setClauses.length === 0) return;
+
+  args.push(String(settlementId));
+  await tursoClient.execute({
+    sql: `UPDATE settlements SET ${setClauses.join(', ')} WHERE id = ?;`,
+    args
   });
 }
 

@@ -86,8 +86,26 @@ export class LocalDatabase {
     localStorage.setItem('splitup_personal_expenses', JSON.stringify(personal));
   }
 
+  static updateExpense(expenseId, updatedFields) {
+    const expenses = this.getExpenses().map(e => String(e.id) === String(expenseId) ? { ...e, ...updatedFields } : e);
+    localStorage.setItem('splitup_expenses', JSON.stringify(expenses));
+
+    const personal = this.getPersonalExpenses().map(e => String(e.id) === String(expenseId) ? { ...e, ...updatedFields } : e);
+    localStorage.setItem('splitup_personal_expenses', JSON.stringify(personal));
+  }
+
+  static updatePersonalTopic(topicId, updatedFields) {
+    const topics = this.getPersonalTopics().map(t => String(t.id) === String(topicId) ? { ...t, ...updatedFields } : t);
+    localStorage.setItem('splitup_personal_topics', JSON.stringify(topics));
+  }
+
   static deleteSettlement(settlementId) {
     const settlements = this.getSettlements().filter(s => String(s.id) !== String(settlementId));
+    localStorage.setItem('splitup_settlements', JSON.stringify(settlements));
+  }
+
+  static updateSettlement(settlementId, updatedFields) {
+    const settlements = this.getSettlements().map(s => String(s.id) === String(settlementId) ? { ...s, ...updatedFields } : s);
     localStorage.setItem('splitup_settlements', JSON.stringify(settlements));
   }
 

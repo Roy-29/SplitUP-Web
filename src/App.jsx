@@ -28,8 +28,11 @@ import {
   tursoGetPersonalTopics,
   tursoAddPersonalTopic,
   tursoDeletePersonalTopic,
+  tursoUpdatePersonalTopic,
   tursoDeleteExpense,
+  tursoUpdateExpense,
   tursoDeleteSettlement,
+  tursoUpdateSettlement,
   tursoDeleteGroup,
   initTursoTables, 
   tursoSignOut,
@@ -416,6 +419,89 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to delete topic:", err);
+    }
+    loadData();
+  };
+
+  const handleUpdateExpense = async (expenseId, updatedFields) => {
+    setData(prev => {
+      const updateList = (list) => (list || []).map(item => 
+        String(item.id) === String(expenseId) ? { ...item, ...updatedFields } : item
+      );
+      return {
+        ...prev,
+        expenses: updateList(prev.expenses),
+        personalExpenses: updateList(prev.personalExpenses),
+        activities: (prev.activities || []).map(a => 
+          String(a.data?.id) === String(expenseId)
+            ? { ...a, date: updatedFields.date !== undefined ? updatedFields.date : a.date, data: { ...a.data, ...updatedFields } }
+            : a
+        )
+      };
+    });
+
+    setSelectedExpenseForDetails(prev => 
+      prev && String(prev.id) === String(expenseId) ? { ...prev, ...updatedFields } : prev
+    );
+
+    try {
+      if (isTursoConfigured) {
+        await tursoUpdateExpense(expenseId, updatedFields);
+      }
+      LocalDatabase.updateExpense(expenseId, updatedFields);
+    } catch (err) {
+      console.error("Failed to update expense:", err);
+    }
+    loadData();
+  };
+
+  const handleUpdateSettlement = async (settlementId, updatedFields) => {
+    setData(prev => ({
+      ...prev,
+      settlements: (prev.settlements || []).map(s => 
+        String(s.id) === String(settlementId) ? { ...s, ...updatedFields } : s
+      ),
+      activities: (prev.activities || []).map(a => 
+        String(a.data?.id) === String(settlementId)
+          ? { ...a, date: updatedFields.date !== undefined ? updatedFields.date : a.date, data: { ...a.data, ...updatedFields } }
+          : a
+      )
+    }));
+
+    setSelectedExpenseForDetails(prev => 
+      prev && String(prev.id) === String(settlementId) ? { ...prev, ...updatedFields } : prev
+    );
+
+    try {
+      if (isTursoConfigured) {
+        await tursoUpdateSettlement(settlementId, updatedFields);
+      }
+      LocalDatabase.updateSettlement(settlementId, updatedFields);
+    } catch (err) {
+      console.error("Failed to update settlement:", err);
+    }
+    loadData();
+  };
+
+  const handleUpdateTopic = async (topicId, updatedFields) => {
+    setData(prev => ({
+      ...prev,
+      personalTopics: (prev.personalTopics || []).map(t => 
+        String(t.id) === String(topicId) ? { ...t, ...updatedFields } : t
+      )
+    }));
+
+    setSelectedTopicForDetails(prev => 
+      prev && String(prev.id) === String(topicId) ? { ...prev, ...updatedFields } : prev
+    );
+
+    try {
+      if (isTursoConfigured) {
+        await tursoUpdatePersonalTopic(topicId, updatedFields);
+      }
+      LocalDatabase.updatePersonalTopic(topicId, updatedFields);
+    } catch (err) {
+      console.error("Failed to update topic:", err);
     }
     loadData();
   };
@@ -813,8 +899,11 @@ function App() {
         expense={selectedExpenseForDetails}
         currentUser={currentUser}
         currencyCode={currencyCode}
+        personalTopics={data.personalTopics}
         onDeleteExpense={handleDeleteExpense}
         onDeleteSettlement={handleDeleteSettlement}
+        onUpdateExpense={handleUpdateExpense}
+        onUpdateSettlement={handleUpdateSettlement}
         onFilterTopic={(topicName) => {
           setSelectedExpenseForDetails(null);
           const found = (data.personalTopics || []).find(t => t.name.toLowerCase() === topicName.toLowerCase());
@@ -843,6 +932,7 @@ function App() {
         onAddExpense={(topicName) => openExpenseModal('PERSONAL', null, topicName)}
         onDeleteTopic={handleDeleteTopic}
         onDeleteExpense={handleDeleteExpense}
+        onUpdateTopic={handleUpdateTopic}
         onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
       />
 
