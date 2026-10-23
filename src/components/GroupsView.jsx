@@ -12,6 +12,10 @@ export default function GroupsView({
   onNewGroupClick, 
   currentUser, 
   onDeleteGroup, 
+  onUpdateGroup,
+  onAddMember,
+  onUpdateMember,
+  onDeleteMember,
   currencyCode = 'BDT', 
   onRefreshData,
   onAddExpense,
@@ -102,7 +106,7 @@ export default function GroupsView({
       <GroupDetailsModal
         isOpen={!!selectedGroupDetails}
         onClose={() => setSelectedGroupDetails(null)}
-        group={selectedGroupDetails}
+        group={selectedGroupDetails ? (groups.find(g => String(g.id) === String(selectedGroupDetails.id)) || selectedGroupDetails) : null}
         currentUser={currentUser}
         members={members}
         expenses={expenses}
@@ -123,6 +127,10 @@ export default function GroupsView({
           setSelectedGroupDetails(null);
           onDeleteGroup?.(grpId);
         }}
+        onUpdateGroup={onUpdateGroup}
+        onAddMember={onAddMember}
+        onUpdateMember={onUpdateMember}
+        onDeleteMember={onDeleteMember}
         onDeleteExpense={onDeleteExpense}
         onDeleteSettlement={onDeleteSettlement}
         onSelectExpense={onSelectExpense}

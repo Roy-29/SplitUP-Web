@@ -99,6 +99,35 @@ export class LocalDatabase {
     localStorage.setItem('splitup_personal_topics', JSON.stringify(topics));
   }
 
+  static addMember(member) {
+    const members = this.getMembers();
+    const newMember = {
+      ...member,
+      id: member.id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+    };
+    members.push(newMember);
+    localStorage.setItem('splitup_members', JSON.stringify(members));
+    return newMember;
+  }
+
+  static updateMember(memberId, updatedFields) {
+    const members = this.getMembers().map(m => 
+      String(m.id) === String(memberId) ? { ...m, ...updatedFields } : m
+    );
+    localStorage.setItem('splitup_members', JSON.stringify(members));
+  }
+
+  static deleteMember(memberId) {
+    const members = this.getMembers().filter(m => String(m.id) !== String(memberId));
+    localStorage.setItem('splitup_members', JSON.stringify(members));
+  }
+
+  static updateGroup(groupId, updatedFields) {
+    const groups = JSON.parse(localStorage.getItem('splitup_groups') || '[]');
+    const updated = groups.map(g => String(g.id) === String(groupId) ? { ...g, ...updatedFields } : g);
+    localStorage.setItem('splitup_groups', JSON.stringify(updated));
+  }
+
   static deleteSettlement(settlementId) {
     const settlements = this.getSettlements().filter(s => String(s.id) !== String(settlementId));
     localStorage.setItem('splitup_settlements', JSON.stringify(settlements));

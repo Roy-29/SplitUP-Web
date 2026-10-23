@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple } from '../lib/CurrencyManager';
 import { calculateBalances, simplifyDebts } from '../lib/BalanceCalculator';
@@ -46,6 +46,10 @@ export default function GroupDetailsModal({
   onSettleUp,
   onShowQr,
   onDeleteGroup,
+  onUpdateGroup,
+  onAddMember,
+  onUpdateMember,
+  onDeleteMember,
   onDeleteExpense,
   onDeleteSettlement,
   onSelectExpense
@@ -54,6 +58,39 @@ export default function GroupDetailsModal({
   const [activeTab, setActiveTab] = useState('EXPENSES'); // 'EXPENSES' | 'MEMBERS' | 'SETTLEMENTS'
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Group name editing state
+  const [isEditingGroupName, setIsEditingGroupName] = useState(false);
+  const [editGroupName, setEditGroupName] = useState(group?.name || '');
+  const [isSubmittingGroupName, setIsSubmittingGroupName] = useState(false);
+
+  // Add Member state
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberPhone, setNewMemberPhone] = useState('');
+  const [isSubmittingMember, setIsSubmittingMember] = useState(false);
+  const [memberError, setMemberError] = useState('');
+
+  // Edit Member state
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [editMemberName, setEditMemberName] = useState('');
+  const [editMemberEmail, setEditMemberEmail] = useState('');
+  const [editMemberPhone, setEditMemberPhone] = useState('');
+
+  // Member search
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+
+  // Keep state in sync with group prop
+  useEffect(() => {
+    if (group?.name) {
+      setEditGroupName(group.name);
+      setIsEditingGroupName(false);
+    }
+    setIsAddingMember(false);
+    setEditingMemberId(null);
+    setMemberError('');
+  }, [group?.id, group?.name, isOpen]);
 
   // Filter members, expenses, and settlements for this specific group
   const groupMembers = useMemo(() => {
@@ -65,6 +102,16 @@ export default function GroupDetailsModal({
     if (groupMembers.length > 0) return groupMembers;
     return currentUser ? [{ id: currentUser.id, name: currentUser.name, email: currentUser.email }] : [];
   }, [groupMembers, currentUser]);
+
+  const displayedMembers = useMemo(() => {
+    if (!memberSearchTerm.trim()) return effectiveMembers;
+    const term = memberSearchTerm.toLowerCase();
+    return effectiveMembers.filter(m => 
+      (m.name && m.name.toLowerCase().includes(term)) ||
+      (m.email && m.email.toLowerCase().includes(term)) ||
+      (m.phone && m.phone.toLowerCase().includes(term))
+    );
+  }, [effectiveMembers, memberSearchTerm]);
 
   const groupExpenses = useMemo(() => {
     if (!group) return [];
@@ -118,6 +165,106 @@ export default function GroupDetailsModal({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const handleSaveGroupName = async () => {
+    if (!editGroupName.trim() || editGroupName.trim() === group.name) {
+      setIsEditingGroupName(false);
+      return;
+    }
+    setIsSubmittingGroupName(true);
+    try {
+      await onUpdateGroup?.(group.id, { name: editGroupName.trim() });
+      setIsEditingGroupName(false);
+    } catch (err) {
+      console.error("Failed to update group name:", err);
+    } finally {
+      setIsSubmittingGroupName(false);
+    }
+  };
+
+  const handleCreateMember = async (e) => {
+    e?.preventDefault();
+    if (!newMemberName.trim()) {
+      setMemberError('Member name is required');
+      return;
+    }
+    const exists = effectiveMembers.some(m => m.name.toLowerCase() === newMemberName.trim().toLowerCase());
+    if (exists) {
+      setMemberError(`"${newMemberName.trim()}" is already in this group`);
+      return;
+    }
+
+    setMemberError('');
+    setIsSubmittingMember(true);
+    try {
+      await onAddMember?.(group.id, {
+        name: newMemberName.trim(),
+        email: newMemberEmail.trim(),
+        phone: newMemberPhone.trim()
+      });
+      setNewMemberName('');
+      setNewMemberEmail('');
+      setNewMemberPhone('');
+      setIsAddingMember(false);
+    } catch (err) {
+      setMemberError(err.message || 'Failed to add member');
+    } finally {
+      setIsSubmittingMember(false);
+    }
+  };
+
+  const handleStartEditMember = (member) => {
+    setEditingMemberId(member.id);
+    setEditMemberName(member.name || '');
+    setEditMemberEmail(member.email || '');
+    setEditMemberPhone(member.phone || '');
+  };
+
+  const handleSaveEditMember = async (memberId) => {
+    if (!editMemberName.trim()) return;
+    try {
+      await onUpdateMember?.(memberId, {
+        name: editMemberName.trim(),
+        email: editMemberEmail.trim(),
+        phone: editMemberPhone.trim()
+      });
+      setEditingMemberId(null);
+    } catch (err) {
+      console.error('Failed to update member:', err);
+    }
+  };
+
+  const handleRemoveMember = async (member, balance) => {
+    if (Math.abs(balance.netBalance) > 0.01) {
+      await confirm({
+        title: 'Cannot Remove Member',
+        message: `${member.name} still has an active balance of ${formatSimple(Math.abs(balance.netBalance), currencyCode)} (${balance.netBalance > 0 ? 'owed to them' : 'they owe'}). All debts involving this member must be settled before removing them.`,
+        confirmText: 'Understood',
+        type: 'warning',
+        icon: 'ph-warning'
+      });
+      return;
+    }
+
+    const isCurrentUser = String(member.id) === String(currentUser?.id) || (member.email && member.email === currentUser?.email);
+
+    const ok = await confirm({
+      title: isCurrentUser ? 'Leave Group?' : 'Remove Member?',
+      message: isCurrentUser 
+        ? `Are you sure you want to leave "${group.name}"?`
+        : `Are you sure you want to remove "${member.name}" from "${group.name}"?`,
+      confirmText: isCurrentUser ? 'Leave Group' : 'Remove Member',
+      type: 'danger',
+      icon: 'ph-user-minus'
+    });
+
+    if (ok) {
+      await onDeleteMember?.(member.id, group.id);
+      if (isCurrentUser) {
+        onClose?.();
+      }
+    }
+  };
+
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div 
@@ -144,9 +291,69 @@ export default function GroupDetailsModal({
               {initial}
             </div>
             <div>
-              <h2 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--text-primary)' }}>
-                {group.name}
-              </h2>
+              {isEditingGroupName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={editGroupName}
+                    onChange={(e) => setEditGroupName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveGroupName();
+                      if (e.key === 'Escape') setIsEditingGroupName(false);
+                    }}
+                    style={{ 
+                      padding: '4px 10px', 
+                      fontSize: '1.25rem', 
+                      fontWeight: 700, 
+                      borderRadius: '8px', 
+                      maxWidth: '220px' 
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleSaveGroupName}
+                    disabled={isSubmittingGroupName || !editGroupName.trim()}
+                    style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+                    title="Save group name"
+                  >
+                    <i className="ph ph-check"></i>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setIsEditingGroupName(false);
+                      setEditGroupName(group.name);
+                    }}
+                    style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+                    title="Cancel"
+                  >
+                    <i className="ph ph-x"></i>
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h2 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--text-primary)' }}>
+                    {group.name}
+                  </h2>
+                  {onUpdateGroup && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={() => {
+                        setEditGroupName(group.name);
+                        setIsEditingGroupName(true);
+                      }}
+                      style={{ width: '26px', height: '26px', opacity: 0.8 }}
+                      title="Edit group name"
+                    >
+                      <i className="ph ph-pencil-simple" style={{ fontSize: '0.85rem' }}></i>
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {effectiveMembers.length} member{effectiveMembers.length === 1 ? '' : 's'}
@@ -476,79 +683,397 @@ export default function GroupDetailsModal({
 
         {/* TAB 2: MEMBERS & BALANCES */}
         {activeTab === 'MEMBERS' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {effectiveMembers.map(member => {
-              const b = groupBalances.find(bal => String(bal.memberId) === String(member.id)) || { netBalance: 0, totalPaid: 0 };
-              const isCurrentUser = String(member.id) === String(currentUser?.id) || (member.email && member.email === currentUser?.email);
-              const mColor = avatarColorForName(member.name);
+          <div>
+            {/* Header row with Add Member and Invite Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                  Group Members ({effectiveMembers.length})
+                </h4>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Manage members, contact info, and settlements
+                </span>
+              </div>
 
-              return (
-                <div
-                  key={member.id}
-                  style={{
-                    padding: '12px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    borderRadius: '10px',
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--glass-border)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                    <div style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '50%',
-                      background: `${mColor}20`,
-                      color: mColor,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      fontSize: '1rem',
-                      flexShrink: 0
-                    }}>
-                      {member.name ? member.name.charAt(0).toUpperCase() : 'M'}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>{member.name}</span>
-                        {isCurrentUser && (
-                          <span style={{ fontSize: '0.7rem', background: 'rgba(108, 92, 231, 0.2)', color: 'var(--accent-secondary)', padding: '1px 6px', borderRadius: '4px' }}>
-                            You
-                          </span>
-                        )}
-                        {String(group.createdBy) === String(member.userId || member.id) && (
-                          <span style={{ fontSize: '0.7rem', background: 'rgba(253, 203, 110, 0.2)', color: 'var(--warning)', padding: '1px 6px', borderRadius: '4px' }}>
-                            Creator
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {member.email || (member.phone ? `Phone: ${member.phone}` : 'Group Member')}
-                      </div>
-                    </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {group.joinCode && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleCopyCode}
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                    title="Copy invite code to clipboard"
+                  >
+                    <i className={`ph ${copiedCode ? 'ph-check' : 'ph-share-network'}`}></i>
+                    <span>{copiedCode ? 'Code Copied!' : 'Invite Code'}</span>
+                  </button>
+                )}
+
+                {onAddMember && (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setIsAddingMember(prev => !prev);
+                      setEditingMemberId(null);
+                      setMemberError('');
+                    }}
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                  >
+                    <i className={`ph ${isAddingMember ? 'ph-x' : 'ph-user-plus'}`}></i>
+                    <span>{isAddingMember ? 'Close' : 'Add Member'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter members if more than 4 */}
+            {effectiveMembers.length > 4 && (
+              <div style={{ marginBottom: '12px' }}>
+                <input
+                  type="text"
+                  placeholder="Search members by name, email, or phone..."
+                  value={memberSearchTerm}
+                  onChange={(e) => setMemberSearchTerm(e.target.value)}
+                  style={{ width: '100%', padding: '8px 14px', fontSize: '0.82rem', borderRadius: '10px', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+
+            {/* Add Member Inline Panel */}
+            {isAddingMember && (
+              <form onSubmit={handleCreateMember} style={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--accent-primary)',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                boxShadow: '0 4px 16px rgba(108, 92, 231, 0.15)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="ph ph-user-plus" style={{ color: 'var(--accent-primary)' }}></i> Add Member to {group.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingMember(false)}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem' }}
+                  >
+                    <i className="ph ph-x"></i>
+                  </button>
+                </div>
+
+                {memberError && (
+                  <div style={{ color: 'var(--danger)', fontSize: '0.8rem', background: 'rgba(235, 77, 75, 0.12)', border: '1px solid rgba(235, 77, 75, 0.25)', padding: '6px 10px', borderRadius: '6px' }}>
+                    {memberError}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Charlie / Tanvir"
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                      autoFocus
+                      required
+                    />
                   </div>
 
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ 
-                      fontSize: '0.95rem', 
-                      fontWeight: 700, 
-                      color: b.netBalance > 0 ? 'var(--success)' : (b.netBalance < 0 ? 'var(--danger)' : 'var(--text-muted)') 
-                    }}>
-                      {b.netBalance > 0 
-                        ? `+${formatSimple(b.netBalance, currencyCode)}` 
-                        : (b.netBalance < 0 ? `-${formatSimple(Math.abs(b.netBalance), currencyCode)}` : 'Settled')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                      Paid: {formatSimple(b.totalPaid || 0, currencyCode)}
-                    </div>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
+                      Email Address (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. charlie@gmail.com"
+                      value={newMemberEmail}
+                      onChange={(e) => setNewMemberEmail(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
+                      Phone / MFS (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="e.g. 017xxxxxxxx"
+                      value={newMemberPhone}
+                      onChange={(e) => setNewMemberPhone(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
                   </div>
                 </div>
-              );
-            })}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setIsAddingMember(false);
+                      setMemberError('');
+                    }}
+                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={isSubmittingMember || !newMemberName.trim()}
+                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                  >
+                    {isSubmittingMember ? (
+                      <>
+                        <i className="ph ph-spinner ph-spin"></i> Adding...
+                      </>
+                    ) : (
+                      <>
+                        <i className="ph ph-check"></i> Save Member
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Members List */}
+            {displayedMembers.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '32px 16px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: '12px',
+                color: 'var(--text-muted)'
+              }}>
+                <i className="ph ph-user-focus" style={{ fontSize: '2rem', marginBottom: '6px', display: 'block' }}></i>
+                <span>No matching members found</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto' }}>
+                {displayedMembers.map(member => {
+                  const b = groupBalances.find(bal => String(bal.memberId) === String(member.id)) || { netBalance: 0, totalPaid: 0 };
+                  const isCurrentUser = String(member.id) === String(currentUser?.id) || (member.email && member.email === currentUser?.email);
+                  const isCreator = String(group.createdBy) === String(member.userId || member.id);
+                  const mColor = avatarColorForName(member.name);
+                  const isEditing = editingMemberId === member.id;
+
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={member.id}
+                        style={{
+                          padding: '14px',
+                          borderRadius: '10px',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--accent-primary)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <i className="ph ph-pencil-simple" style={{ color: 'var(--accent-primary)' }}></i>
+                          Edit Member: {member.name}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>
+                              Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={editMemberName}
+                              onChange={(e) => setEditMemberName(e.target.value)}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>
+                              Email
+                            </label>
+                            <input
+                              type="email"
+                              value={editMemberEmail}
+                              onChange={(e) => setEditMemberEmail(e.target.value)}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>
+                              Phone / MFS
+                            </label>
+                            <input
+                              type="tel"
+                              value={editMemberPhone}
+                              onChange={(e) => setEditMemberPhone(e.target.value)}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setEditingMemberId(null)}
+                            style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={() => handleSaveEditMember(member.id)}
+                            disabled={!editMemberName.trim()}
+                            style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={member.id}
+                      style={{
+                        padding: '12px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        borderRadius: '10px',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--glass-border)',
+                        transition: 'border-color 0.15s ease'
+                      }}
+                      className="hover-card"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '50%',
+                          background: `${mColor}20`,
+                          color: mColor,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '1rem',
+                          flexShrink: 0
+                        }}>
+                          {member.name ? member.name.charAt(0).toUpperCase() : 'M'}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</span>
+                            {isCurrentUser && (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(108, 92, 231, 0.2)', color: 'var(--accent-secondary)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                You
+                              </span>
+                            )}
+                            {isCreator && (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(253, 203, 110, 0.2)', color: 'var(--warning)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                Creator
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {member.email ? member.email : (member.phone ? `Phone: ${member.phone}` : 'Group Member')}
+                            {member.email && member.phone ? ` • ${member.phone}` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ 
+                            fontSize: '0.95rem', 
+                            fontWeight: 700, 
+                            color: b.netBalance > 0 ? 'var(--success)' : (b.netBalance < 0 ? 'var(--danger)' : 'var(--text-muted)') 
+                          }}>
+                            {b.netBalance > 0 
+                              ? `+${formatSimple(b.netBalance, currencyCode)}` 
+                              : (b.netBalance < 0 ? `-${formatSimple(Math.abs(b.netBalance), currencyCode)}` : 'Settled')}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                            Paid: {formatSimple(b.totalPaid || 0, currencyCode)}
+                          </div>
+                        </div>
+
+                        {/* Quick Settle button if balance != 0 */}
+                        {Math.abs(b.netBalance) > 0.01 && onSettleUp && (
+                          <button
+                            type="button"
+                            onClick={() => onSettleUp(group.id, member.id)}
+                            style={{
+                              background: 'rgba(0, 184, 148, 0.15)',
+                              border: '1px solid rgba(0, 184, 148, 0.3)',
+                              color: 'var(--success)',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                            title="Settle balance with this member"
+                          >
+                            <i className="ph ph-handshake"></i>
+                            <span>Settle</span>
+                          </button>
+                        )}
+
+                        {/* Action buttons: Edit & Remove */}
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {onUpdateMember && (
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => handleStartEditMember(member)}
+                              style={{ width: '28px', height: '28px' }}
+                              title="Edit member details"
+                            >
+                              <i className="ph ph-pencil-simple" style={{ fontSize: '0.85rem' }}></i>
+                            </button>
+                          )}
+
+                          {onDeleteMember && (
+                            <button
+                              type="button"
+                              className="btn-icon delete-btn"
+                              onClick={() => handleRemoveMember(member, b)}
+                              style={{ width: '28px', height: '28px' }}
+                              title={isCurrentUser ? "Leave group" : "Remove member"}
+                            >
+                              <i className="ph ph-user-minus" style={{ fontSize: '0.85rem' }}></i>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

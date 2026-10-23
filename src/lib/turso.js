@@ -237,6 +237,7 @@ export async function tursoGetMembers(groupId = null) {
     id: isNaN(Number(row.id)) ? String(row.id) : Number(row.id),
     name: String(row.name),
     email: row.email ? String(row.email) : '',
+    phone: row.phone ? String(row.phone) : '',
     groupId: isNaN(Number(row.groupId)) ? String(row.groupId) : Number(row.groupId),
     userId: row.userId ? String(row.userId) : null,
     bkashNumber: row.bkashNumber ? String(row.bkashNumber) : '',
@@ -255,13 +256,14 @@ export function generateJoinCode() {
   return code;
 }
 
-export async function tursoAddMember(groupId, name, email = '', userId = null) {
+export async function tursoAddMember(groupId, name, email = '', userId = null, phone = '') {
   if (!tursoClient) throw new Error("Turso client is not initialized.");
   await initTursoTables();
 
   let resolvedUserId = userId;
   let resolvedName = name.trim();
   let resolvedEmail = email ? email.trim().toLowerCase() : null;
+  let resolvedPhone = phone ? phone.trim() : null;
 
   // If email was provided and no userId, check if user with this email is already registered
   if (resolvedEmail && !resolvedUserId) {
@@ -277,13 +279,77 @@ export async function tursoAddMember(groupId, name, email = '', userId = null) {
     } catch (_) {}
   }
 
+  // If phone was provided and no userId, check if registered user matches phone
+  if (resolvedPhone && !resolvedUserId) {
+    try {
+      const phoneCheck = await tursoClient.execute({
+        sql: 'SELECT id, name FROM users WHERE bkashNumber = ? OR nagadNumber = ? OR rocketNumber = ? LIMIT 1;',
+        args: [resolvedPhone, resolvedPhone, resolvedPhone]
+      });
+      if (phoneCheck.rows.length > 0) {
+        resolvedUserId = String(phoneCheck.rows[0].id);
+        if (!resolvedName) resolvedName = String(phoneCheck.rows[0].name);
+      }
+    } catch (_) {}
+  }
+
   const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   await tursoClient.execute({
-    sql: 'INSERT INTO members (id, name, email, groupId, userId) VALUES (?, ?, ?, ?, ?);',
-    args: [id, resolvedName, resolvedEmail, String(groupId), resolvedUserId]
+    sql: 'INSERT INTO members (id, name, email, phone, groupId, userId) VALUES (?, ?, ?, ?, ?, ?);',
+    args: [id, resolvedName, resolvedEmail, resolvedPhone, String(groupId), resolvedUserId]
   });
 
-  return { id, name: resolvedName, email: resolvedEmail, groupId, userId: resolvedUserId };
+  return { id, name: resolvedName, email: resolvedEmail, phone: resolvedPhone, groupId, userId: resolvedUserId };
+}
+
+export async function tursoUpdateMember(memberId, { name, email, phone }) {
+  if (!tursoClient || !memberId) return;
+  await initTursoTables();
+
+  const updates = [];
+  const args = [];
+
+  if (name !== undefined) {
+    updates.push('name = ?');
+    args.push(name.trim());
+  }
+  if (email !== undefined) {
+    updates.push('email = ?');
+    args.push(email ? email.trim().toLowerCase() : null);
+  }
+  if (phone !== undefined) {
+    updates.push('phone = ?');
+    args.push(phone ? phone.trim() : null);
+  }
+
+  if (updates.length === 0) return;
+
+  args.push(String(memberId));
+  await tursoClient.execute({
+    sql: `UPDATE members SET ${updates.join(', ')} WHERE id = ?;`,
+    args
+  });
+}
+
+export async function tursoDeleteMember(memberId) {
+  if (!tursoClient || !memberId) return;
+  await initTursoTables();
+
+  await tursoClient.execute({
+    sql: 'DELETE FROM members WHERE id = ?;',
+    args: [String(memberId)]
+  });
+}
+
+export async function tursoUpdateGroup(groupId, { name }) {
+  if (!tursoClient || !groupId) return;
+  await initTursoTables();
+  if (name) {
+    await tursoClient.execute({
+      sql: 'UPDATE groups SET name = ? WHERE id = ?;',
+      args: [name.trim(), String(groupId)]
+    });
+  }
 }
 
 export async function tursoGetExpenses(groupId = null) {

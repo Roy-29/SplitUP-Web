@@ -34,6 +34,10 @@ import {
   tursoDeleteSettlement,
   tursoUpdateSettlement,
   tursoDeleteGroup,
+  tursoAddMember,
+  tursoUpdateMember,
+  tursoDeleteMember,
+  tursoUpdateGroup,
   initTursoTables, 
   tursoSignOut,
   tursoSyncCurrentUser 
@@ -212,6 +216,7 @@ function App() {
         mockGroups = (tGroups || []).map(g => ({
           id: g.id,
           name: g.name,
+          createdBy: g.createdBy,
           joinCode: g.joinCode,
           memberCount: (tMembers || []).filter(m => String(m.groupId) === String(g.id)).length,
           expenseCount: (tExpenses || []).filter(e => String(e.groupId) === String(g.id)).length,
@@ -404,6 +409,77 @@ function App() {
       await tursoDeleteGroup(groupId);
     } catch (err) {
       console.error("Failed to delete group:", err);
+    }
+    loadData();
+  };
+
+  const handleAddMember = async (groupId, { name, email, phone }) => {
+    try {
+      let newMem = null;
+      if (isTursoConfigured) {
+        newMem = await tursoAddMember(groupId, name, email, null, phone);
+      } else {
+        newMem = LocalDatabase.addMember({ groupId, name, email, phone });
+      }
+      await loadData();
+      return newMem;
+    } catch (err) {
+      console.error("Failed to add member:", err);
+      throw err;
+    }
+  };
+
+  const handleUpdateMember = async (memberId, updatedFields) => {
+    setData(prev => ({
+      ...prev,
+      members: (prev.members || []).map(m =>
+        String(m.id) === String(memberId) ? { ...m, ...updatedFields } : m
+      )
+    }));
+    try {
+      if (isTursoConfigured) {
+        await tursoUpdateMember(memberId, updatedFields);
+      }
+      LocalDatabase.updateMember(memberId, updatedFields);
+    } catch (err) {
+      console.error("Failed to update member:", err);
+    }
+    loadData();
+  };
+
+  const handleDeleteMember = async (memberId) => {
+    setData(prev => ({
+      ...prev,
+      members: (prev.members || []).filter(m => String(m.id) !== String(memberId))
+    }));
+    try {
+      if (isTursoConfigured) {
+        await tursoDeleteMember(memberId);
+      }
+      LocalDatabase.deleteMember(memberId);
+    } catch (err) {
+      console.error("Failed to delete member:", err);
+    }
+    loadData();
+  };
+
+  const handleUpdateGroup = async (groupId, updatedFields) => {
+    setData(prev => ({
+      ...prev,
+      groups: (prev.groups || []).map(g =>
+        String(g.id) === String(groupId) ? { ...g, ...updatedFields } : g
+      )
+    }));
+    setSelectedGroupForDetails(prev =>
+      prev && String(prev.id) === String(groupId) ? { ...prev, ...updatedFields } : prev
+    );
+    try {
+      if (isTursoConfigured) {
+        await tursoUpdateGroup(groupId, updatedFields);
+      }
+      LocalDatabase.updateGroup(groupId, updatedFields);
+    } catch (err) {
+      console.error("Failed to update group:", err);
     }
     loadData();
   };
@@ -792,6 +868,10 @@ function App() {
               currentUser={currentUser}
               currencyCode={currencyCode}
               onDeleteGroup={handleDeleteGroup}
+              onUpdateGroup={handleUpdateGroup}
+              onAddMember={handleAddMember}
+              onUpdateMember={handleUpdateMember}
+              onDeleteMember={handleDeleteMember}
               onRefreshData={loadData}
               onAddExpense={(mode, grpId) => openExpenseModal(mode, grpId)}
               onSettleUp={(grpId) => openSettleModal(grpId)}
@@ -963,6 +1043,10 @@ function App() {
         }}
         onShowQr={() => {}}
         onDeleteGroup={handleDeleteGroup}
+        onUpdateGroup={handleUpdateGroup}
+        onAddMember={handleAddMember}
+        onUpdateMember={handleUpdateMember}
+        onDeleteMember={handleDeleteMember}
         onDeleteExpense={handleDeleteExpense}
         onDeleteSettlement={handleDeleteSettlement}
         onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
