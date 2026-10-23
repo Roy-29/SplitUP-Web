@@ -416,7 +416,7 @@ export default function NewExpenseModal({
             <div className="form-group">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-                  Subject / Topic (ঐচ্ছিক বিষয়/প্রজেক্ট)
+                  Subject / Topic (Optional Project / Event)
                 </label>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Optional</span>
               </div>

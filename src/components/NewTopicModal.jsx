@@ -105,7 +105,7 @@ export default function NewTopicModal({
           <div>
             <h2 style={{ fontSize: '1.3rem', margin: '0 0 4px 0' }}>New Subject / Topic</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
-              গ্রুপ বা ইভেন্টভিত্তিক ব্যক্তিগত খরচ ট্র্যাক করুন
+              Track personal expenses by event, trip, or project
             </p>
           </div>
           <button type="button" className="btn-icon" onClick={onClose} style={{ width: '32px', height: '32px' }}>

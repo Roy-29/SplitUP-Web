@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { formatSimple } from '../lib/CurrencyManager';
+import { formatSimple, getSymbol } from '../lib/CurrencyManager';
 import { normalizeCategory } from './ExpensesView';
 import CustomSelect from './CustomSelect';
 import { isTursoConfigured, tursoAddPersonalTopic } from '../lib/turso';
@@ -400,7 +400,7 @@ export default function ExpenseDetailsModal({
                   fontSize: '1.2rem',
                   color: 'var(--text-muted)'
                 }}>
-                  ৳
+                  {getSymbol(currencyCode)}
                 </span>
               </div>
             </div>
@@ -463,7 +463,7 @@ export default function ExpenseDetailsModal({
             {isPersonal && !isSettlement && (
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Subject / Topic (ঐচ্ছিক বিষয়)</label>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Subject / Topic</label>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Optional</span>
                 </div>
                 <CustomSelect 

@@ -252,10 +252,10 @@ export default function ExpensesView({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
                   <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)' }}>
-                    Subjects & Projects (বিষয়ভিত্তিক খরচ)
+                    Subjects & Projects
                   </h3>
                   <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    যেমন: ট্যুর, মাসিক বাজার, ফ্ল্যাট খরচ, শপিং বা চিকিৎসা — নির্দিষ্ট বিষয়ের অধীনে খরচগুলো সাজিয়ে রাখুন
+                    E.g., Trips, Monthly Groceries, Flat Maintenance, Shopping — organize your expenses under dedicated subjects
                   </p>
                 </div>
 
@@ -457,7 +457,7 @@ export default function ExpensesView({
                   </div>
                   <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>Create Your First Subject / Project</h3>
                   <p style={{ color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto 20px', fontSize: '0.9rem' }}>
-                    ট্যুর, মাসিক বাজার, বাসা মেরামত, বা কেনাকাটার মতো বিষয় বা ইভেন্ট তৈরি করুন এবং তার অধীনে একাধিক খরচ যোগ করুন।
+                    Create subjects or events like trips, groceries, home repairs, or projects, and track multiple expenses under them.
                   </p>
                   <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                     {onNewTopicClick && (

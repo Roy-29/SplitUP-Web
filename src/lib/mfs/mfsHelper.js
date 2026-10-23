@@ -7,7 +7,7 @@ export const MFS_PROVIDERS = {
   BKASH: {
     id: 'BKASH',
     name: 'bKash',
-    bengaliName: 'বিকাশ',
+    bengaliName: 'bKash',
     color: '#E2136E',
     lightColor: '#fde8f1',
     icon: 'ph-money',
@@ -19,7 +19,7 @@ export const MFS_PROVIDERS = {
   NAGAD: {
     id: 'NAGAD',
     name: 'Nagad',
-    bengaliName: 'নগদ',
+    bengaliName: 'Nagad',
     color: '#F7941D',
     lightColor: '#fef4e8',
     icon: 'ph-lightning',
@@ -31,7 +31,7 @@ export const MFS_PROVIDERS = {
   ROCKET: {
     id: 'ROCKET',
     name: 'Rocket',
-    bengaliName: 'রকেট',
+    bengaliName: 'Rocket',
     color: '#8C3494',
     lightColor: '#f4e9f5',
     icon: 'ph-rocket-launch',
@@ -43,7 +43,7 @@ export const MFS_PROVIDERS = {
   UPAY: {
     id: 'UPAY',
     name: 'Upay',
-    bengaliName: 'উপায়',
+    bengaliName: 'Upay',
     color: '#00A651',
     lightColor: '#e6f7ee',
     icon: 'ph-credit-card',

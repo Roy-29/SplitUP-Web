@@ -388,10 +388,10 @@ export default function SettleUpModal({
                               value={form.paymentMethod}
                               onChange={val => setForm(prev => ({ ...prev, paymentMethod: val }))}
                               options={[
-                                { value: 'bKash', label: 'bKash (বিকাশ)', icon: '🌸' },
-                                { value: 'Nagad', label: 'Nagad (নগদ)', icon: '🟠' },
-                                { value: 'Rocket', label: 'Rocket (রকেট)', icon: '🟣' },
-                                { value: 'Upay', label: 'Upay (উপায়)', icon: '🟢' },
+                                { value: 'bKash', label: 'bKash', icon: '🌸' },
+                                { value: 'Nagad', label: 'Nagad', icon: '🟠' },
+                                { value: 'Rocket', label: 'Rocket', icon: '🟣' },
+                                { value: 'Upay', label: 'Upay', icon: '🟢' },
                                 { value: 'Cash', label: 'Cash', icon: '💵' },
                                 { value: 'Bank Transfer', label: 'Bank / CellFin Transfer', icon: '🏦' },
                                 { value: 'Google Pay / UPI', label: 'Google Pay / UPI', icon: '⚡' },

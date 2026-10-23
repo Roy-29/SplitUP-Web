@@ -28,7 +28,6 @@ export default function MfsCheckoutModal({
   const isBkash = provider === 'BKASH';
   const themeClass = isBkash ? 'bkash' : 'nagad';
   const brandName = isBkash ? 'bKash' : 'Nagad';
-  const bengaliBrand = isBkash ? 'বিকাশ' : 'নগদ';
 
   const handleStep1Submit = async (e) => {
     e.preventDefault();
@@ -109,7 +108,7 @@ export default function MfsCheckoutModal({
           <div className="mfs-brand-box">
             <div>
               <div className="mfs-brand-title">{brandName} Checkout</div>
-              <div className="mfs-brand-subtitle">{bengaliBrand} অনলাইন পেমেন্ট গেটওয়ে</div>
+              <div className="mfs-brand-subtitle">{brandName} Online Payment Gateway</div>
             </div>
           </div>
           <button className="mfs-close-btn" onClick={onClose} title="Cancel">

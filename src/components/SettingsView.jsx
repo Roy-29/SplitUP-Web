@@ -363,7 +363,7 @@ export default function SettingsView({
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>bKash (বিকাশ)</span>
+                <span>bKash</span>
                 {currentUser?.primaryMfs === 'BKASH' && (
                   <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', background: '#E2136E', color: '#fff', fontWeight: 700 }}>Default</span>
                 )}
@@ -385,7 +385,7 @@ export default function SettingsView({
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>Nagad (নগদ)</span>
+                <span>Nagad</span>
                 {currentUser?.primaryMfs === 'NAGAD' && (
                   <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', background: '#F7941D', color: '#fff', fontWeight: 700 }}>Default</span>
                 )}
@@ -407,7 +407,7 @@ export default function SettingsView({
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>Rocket (রকেট)</span>
+                <span>Rocket</span>
                 {currentUser?.primaryMfs === 'ROCKET' && (
                   <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', background: '#8C3494', color: '#fff', fontWeight: 700 }}>Default</span>
                 )}
@@ -871,9 +871,9 @@ export default function SettingsView({
                   value={profilePrimaryMfs}
                   onChange={val => setProfilePrimaryMfs(val)}
                   options={[
-                    { value: 'BKASH', label: 'bKash (বিকাশ)', icon: '🌸' },
-                    { value: 'NAGAD', label: 'Nagad (নগদ)', icon: '🟠' },
-                    { value: 'ROCKET', label: 'Rocket (রকেট)', icon: '🟣' }
+                    { value: 'BKASH', label: 'bKash', icon: '🌸' },
+                    { value: 'NAGAD', label: 'Nagad', icon: '🟠' },
+                    { value: 'ROCKET', label: 'Rocket', icon: '🟣' }
                   ]}
                   placeholder="Select primary payout"
                 />
