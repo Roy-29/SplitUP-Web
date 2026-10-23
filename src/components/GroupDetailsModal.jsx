@@ -137,6 +137,66 @@ export default function GroupDetailsModal({
     return simplifyDebts(groupBalances, effectiveMembers, group.id, group.name);
   }, [group, groupBalances, effectiveMembers]);
 
+  // Registered user search for adding members
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const userSearchTimeoutRef = useRef(null);
+
+  // Load suggested users when adding member
+  useEffect(() => {
+    if (!isOpen || !group || !isAddingMember) return;
+    const loadSuggestions = async () => {
+      try {
+        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
+        if (isTursoConfigured) {
+          const suggestions = await tursoGetSuggestedUsers(existingIds, 6);
+          setSuggestedUsers(suggestions);
+        } else {
+          const suggestions = LocalDatabase.searchUsers('', existingIds);
+          setSuggestedUsers(suggestions);
+        }
+      } catch (err) {
+        console.warn("Failed to load suggested users:", err);
+      }
+    };
+    loadSuggestions();
+  }, [isOpen, group?.id, isAddingMember, effectiveMembers]);
+
+  // Debounced search for registered users
+  useEffect(() => {
+    if (!isOpen || !group) return;
+    if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
+    const q = userSearchQuery.trim();
+    if (!q) {
+      setUserSearchResults([]);
+      setIsSearchingUsers(false);
+      return;
+    }
+    setIsSearchingUsers(true);
+    userSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
+        let results = [];
+        if (isTursoConfigured) {
+          results = await tursoSearchUsers(q, existingIds);
+        } else {
+          results = LocalDatabase.searchUsers(q, existingIds);
+        }
+        setUserSearchResults(results);
+      } catch (err) {
+        console.error("Search user error:", err);
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 250);
+
+    return () => {
+      if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
+    };
+  }, [isOpen, group?.id, userSearchQuery, effectiveMembers]);
+
   if (!isOpen || !group) return null;
 
   const avatarColor = avatarColorForName(group.name);
@@ -191,63 +251,6 @@ export default function GroupDetailsModal({
       (group.createdByEmail && currentUser.email && group.createdByEmail.toLowerCase() === currentUser.email.toLowerCase())
     )
   );
-
-  // Registered user search for adding members
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [userSearchResults, setUserSearchResults] = useState([]);
-  const [suggestedUsers, setSuggestedUsers] = useState([]);
-  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
-  const userSearchTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    if (!isAddingMember) return;
-    const loadSuggestions = async () => {
-      try {
-        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
-        if (isTursoConfigured) {
-          const suggestions = await tursoGetSuggestedUsers(existingIds, 6);
-          setSuggestedUsers(suggestions);
-        } else {
-          const suggestions = LocalDatabase.searchUsers('', existingIds);
-          setSuggestedUsers(suggestions);
-        }
-      } catch (err) {
-        console.warn("Failed to load suggested users:", err);
-      }
-    };
-    loadSuggestions();
-  }, [isAddingMember, effectiveMembers]);
-
-  useEffect(() => {
-    if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
-    const q = userSearchQuery.trim();
-    if (!q) {
-      setUserSearchResults([]);
-      setIsSearchingUsers(false);
-      return;
-    }
-    setIsSearchingUsers(true);
-    userSearchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
-        let results = [];
-        if (isTursoConfigured) {
-          results = await tursoSearchUsers(q, existingIds);
-        } else {
-          results = LocalDatabase.searchUsers(q, existingIds);
-        }
-        setUserSearchResults(results);
-      } catch (err) {
-        console.error("Search user error:", err);
-      } finally {
-        setIsSearchingUsers(false);
-      }
-    }, 250);
-
-    return () => {
-      if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
-    };
-  }, [userSearchQuery, effectiveMembers]);
 
   const handleAddRegisteredUser = async (targetUser) => {
     setIsSubmittingMember(true);
