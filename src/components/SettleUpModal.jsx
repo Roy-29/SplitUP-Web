@@ -58,9 +58,6 @@ export default function SettleUpModal({
            null;
   }, [groupMembers, currentUser]);
 
-  // Canonical current user identifier in this group
-  const myCanonicalId = currentUserMember?.id || currentUser?.id;
-
   // Filter debts for the selected group
   const relevantDebts = useMemo(() => {
     return (suggestedDebts || []).filter(d => {
@@ -136,8 +133,7 @@ export default function SettleUpModal({
       setPayeeId(targetDebtsIOwe[0].toMemberId);
       setAmount(String(targetDebtsIOwe[0].amount));
     } else {
-      const otherMember = targetGroupMembers.find(m => !matchesMember(m, currentUser?.id));
-      setPayeeId(otherMember?.id || '');
+      setPayeeId('');
       setAmount('');
     }
   }, [isOpen, currentGroupId, initialTarget, groups, members, suggestedDebts, currentUser]);
@@ -262,6 +258,8 @@ export default function SettleUpModal({
 
   if (!isOpen) return null;
 
+  const currentGroupName = groups.find(g => String(g.id) === String(selectedGroupId))?.name || 'Group';
+
   return createPortal(
     <div className="modal-overlay" style={{ zIndex: 1050 }} onClick={onClose}>
       <div 
@@ -317,6 +315,42 @@ export default function SettleUpModal({
               </button>
             </div>
           </div>
+        ) : debtsIOwe.length === 0 && !initialTarget?.debt ? (
+          /* User has NO debts to settle in this group! */
+          <div style={{
+            padding: '28px 20px',
+            background: 'rgba(0, 184, 148, 0.08)',
+            border: '1px solid rgba(0, 184, 148, 0.25)',
+            borderRadius: '14px',
+            textAlign: 'center',
+            margin: '8px 0 16px'
+          }}>
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'rgba(0, 184, 148, 0.15)',
+              color: 'var(--success)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.8rem',
+              margin: '0 auto 12px'
+            }}>
+              <i className="ph ph-check-circle"></i>
+            </div>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: 700 }}>
+              No Outstanding Debts!
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              You don't owe any money to members in <strong>{currentGroupName}</strong>. You're completely settled up!
+            </p>
+            <div style={{ marginTop: '18px' }}>
+              <button type="button" className="btn-primary" onClick={onClose} style={{ padding: '8px 24px' }}>
+                Done
+              </button>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="modal-form">
             {/* Group Selector if multiple groups exist */}
@@ -336,10 +370,10 @@ export default function SettleUpModal({
               </div>
             )}
 
-            {/* Payer Card (Strictly Current User) */}
+            {/* Payer Card (Strictly Current User - NO DROPDOWN) */}
             <div className="form-group" style={{ marginBottom: '14px' }}>
               <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                Payer (Debtor)
+                Who is paying? (Payer / Debtor)
               </label>
               <div style={{
                 display: 'flex',
@@ -369,41 +403,91 @@ export default function SettleUpModal({
                   borderRadius: '6px',
                   fontWeight: 600
                 }}>
-                  Active Payer ✓
+                  Payer: You ✓
                 </span>
               </div>
             </div>
 
-            {/* Payee Selection (Who are you paying?) */}
-            <div className="form-group">
-              <label style={{ fontSize: '0.82rem' }}>Who are you paying?</label>
-              <CustomSelect 
-                value={payeeId}
-                onChange={pid => {
-                  setPayeeId(pid);
-                  const matchingDebt = debtsIOwe.find(d => 
-                    String(d.toMemberId) === String(pid) || isMemberMatch(d.toMemberId, pid, groupMembers)
-                  );
-                  if (matchingDebt) {
-                    setAmount(String(matchingDebt.amount));
-                  }
-                }}
-                options={groupMembers
-                  .filter(m => !matchesMember(m, currentUser?.id))
-                  .map(m => {
-                    const debt = debtsIOwe.find(d => 
-                      String(d.toMemberId) === String(m.id) || isMemberMatch(d.toMemberId, m.id, groupMembers)
+            {/* If user owes multiple debts in this group, allow picking which debt */}
+            {debtsIOwe.length > 1 && !initialTarget?.debt && (
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                  Select Debt to Settle
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {debtsIOwe.map(d => {
+                    const isSelected = String(payeeId) === String(d.toMemberId);
+                    return (
+                      <div
+                        key={d.toMemberId}
+                        onClick={() => {
+                          setPayeeId(d.toMemberId);
+                          setAmount(String(d.amount));
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          border: isSelected ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                          background: isSelected ? 'rgba(108, 92, 231, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '1rem' }}>👤</span>
+                          <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{d.toMemberName}</span>
+                        </div>
+                        <span style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '0.92rem' }}>
+                          Owe {formatSimple(d.amount, currencyCode)}
+                        </span>
+                      </div>
                     );
-                    return {
-                      value: m.id,
-                      label: m.name,
-                      sublabel: debt ? `You owe ${formatSimple(debt.amount, currencyCode)}` : null,
-                      icon: 'ph-user'
-                    };
                   })}
-                placeholder="Select recipient member"
-              />
-            </div>
+                </div>
+              </div>
+            )}
+
+            {/* Recipient Card (NO DROPDOWN - Displays only the person being paid) */}
+            {payeeMember && (
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                  Who is receiving? (Payee / Creditor)
+                </label>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '10px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserAvatar user={payeeMember} size={36} />
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {payeeMember?.name || 'Member'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {payeeMember?.email || (payeeMember?.phone ? `Phone: ${payeeMember.phone}` : 'Creditor')}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    background: 'rgba(108, 92, 231, 0.15)',
+                    color: 'var(--accent-secondary)',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontWeight: 600
+                  }}>
+                    Recipient
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Outstanding Debt Info Pill */}
             {activeDebtBetween && (

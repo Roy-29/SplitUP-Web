@@ -348,6 +348,11 @@ export default function GroupDetailsModal({
   };
 
   const handleStartEditMember = (member) => {
+    const isCur = isMemberMatch(member.id, currentUser, effectiveMembers);
+    if (!isCur) {
+      alert("Permission Denied: You can only edit your own member details.");
+      return;
+    }
     setEditingMemberId(member.id);
     setEditMemberName(member.name || '');
     setEditMemberEmail(member.email || '');
@@ -355,6 +360,11 @@ export default function GroupDetailsModal({
   };
 
   const handleSaveEditMember = async (memberId) => {
+    const isCur = isMemberMatch(memberId, currentUser, effectiveMembers);
+    if (!isCur) {
+      alert("Permission Denied: You can only edit your own member details.");
+      return;
+    }
     if (!editMemberName.trim()) return;
     try {
       await onUpdateMember?.(memberId, {
@@ -853,9 +863,23 @@ export default function GroupDetailsModal({
                 <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
                   Group Members ({effectiveMembers.length})
                 </h4>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Manage members, contact info, and settlements
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Members & personal expense share
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>•</span>
+                  <span style={{ 
+                    fontSize: '0.76rem', 
+                    background: 'rgba(108, 92, 231, 0.12)', 
+                    border: '1px solid rgba(108, 92, 231, 0.25)', 
+                    padding: '2px 8px', 
+                    borderRadius: '6px', 
+                    color: 'var(--accent-primary)',
+                    fontWeight: 600
+                  }}>
+                    Total Group Expense: {formatSimple(totalGroupSpent, currencyCode)}
+                  </span>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1355,8 +1379,23 @@ export default function GroupDetailsModal({
                               ? `+${formatSimple(b.netBalance, currencyCode)}` 
                               : (b.netBalance < 0 ? `-${formatSimple(Math.abs(b.netBalance), currencyCode)}` : 'Settled')}
                           </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                            Paid: {formatSimple(b.totalPaid || 0, currencyCode)}
+                          <div style={{ 
+                            fontSize: '0.74rem', 
+                            color: 'var(--text-secondary)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px', 
+                            justifyContent: 'flex-end', 
+                            marginTop: '2px',
+                            flexWrap: 'wrap'
+                          }}>
+                            <span title="Total amount this member paid upfront for group expenses">
+                              Paid: <strong style={{ color: 'var(--text-primary)' }}>{formatSimple(b.totalPaid || 0, currencyCode)}</strong>
+                            </span>
+                            <span style={{ color: 'var(--text-muted)' }}>•</span>
+                            <span title="This member's personal share of the group expenses">
+                              Personal: <strong style={{ color: 'var(--accent-primary)' }}>{formatSimple(b.totalOwed || 0, currencyCode)}</strong>
+                            </span>
                           </div>
                         </div>
 
@@ -1396,13 +1435,13 @@ export default function GroupDetailsModal({
 
                         {/* Action buttons: Edit & Remove */}
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          {onUpdateMember && (
+                          {onUpdateMember && isCurrentUser && (
                             <button
                               type="button"
                               className="btn-icon"
                               onClick={() => handleStartEditMember(member)}
                               style={{ width: '28px', height: '28px' }}
-                              title="Edit member details"
+                              title="Edit your member details"
                             >
                               <i className="ph ph-pencil-simple" style={{ fontSize: '0.85rem' }}></i>
                             </button>
