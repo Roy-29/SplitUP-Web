@@ -120,7 +120,7 @@ export default function GroupDetailsModal({
     <div className="modal-overlay" onClick={onClose}>
       <div 
         className="modal-content glass-panel animate-fade-in" 
-        style={{ maxWidth: '640px', maxHeight: '92vh', overflowY: 'auto', padding: '24px' }}
+        style={{ maxWidth: '640px', maxHeight: '92vh', overflowY: 'auto', overflowX: 'hidden', padding: '24px' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}

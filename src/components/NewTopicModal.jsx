@@ -98,7 +98,7 @@ export default function NewTopicModal({
     <div className="modal-overlay" onClick={onClose}>
       <div 
         className="modal-content glass-panel animate-fade-in" 
-        style={{ maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto' }}
+        style={{ maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto', overflowX: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">

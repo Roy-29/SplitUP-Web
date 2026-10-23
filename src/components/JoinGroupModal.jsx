@@ -404,7 +404,7 @@ export default function JoinGroupModal({ isOpen, onClose, onSuccess, currentUser
 
         {/* TAB 1: Live Camera Scanner */}
         {activeTab === 'SCAN' && (
-          <div className="modal-body" style={{ textAlign: 'center', overflowY: 'auto' }}>
+          <div className="modal-body" style={{ textAlign: 'center', overflowY: 'auto', overflowX: 'hidden' }}>
             {cameraError ? (
               <div 
                 style={{ 

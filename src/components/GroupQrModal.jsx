@@ -135,6 +135,7 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
             alignItems: 'center', 
             gap: '12px', 
             overflowY: 'auto', 
+            overflowX: 'hidden',
             flex: 1, 
             padding: '2px 4px',
             textAlign: 'center'

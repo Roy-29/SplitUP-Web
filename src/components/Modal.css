@@ -14,6 +14,7 @@
   z-index: 1000;
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -27,6 +28,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden !important;
   border-radius: var(--radius-lg);
   padding: 28px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
@@ -50,14 +52,26 @@
   flex-direction: column;
   gap: 20px;
   overflow-y: auto;
+  overflow-x: hidden !important;
   flex: 1;
   padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.modal-form::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar {
+  width: 6px;
+  height: 0px !important;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .form-group label, .split-options label, .members-list label {
@@ -68,11 +82,15 @@
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-input {
+input,
+select,
+textarea {
   background: var(--bg-tertiary);
   border: 1px solid var(--glass-border);
   color: var(--text-primary);
@@ -80,6 +98,8 @@ input {
   border-radius: var(--radius-md);
   font-size: 1rem;
   transition: var(--transition-fast);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 input:focus {
@@ -379,9 +399,11 @@ input[type=number] {
 /* Personal Category Grid */
 .personal-category-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .personal-category-btn {

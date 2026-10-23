@@ -279,7 +279,7 @@ export default function ExpenseDetailsModal({
     <div className="modal-overlay" onClick={onClose}>
       <div 
         className="modal-content glass-panel animate-fade-in" 
-        style={{ maxWidth: '500px', maxHeight: '92vh', overflowY: 'auto' }}
+        style={{ maxWidth: '500px', maxHeight: '92vh', overflowY: 'auto', overflowX: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
