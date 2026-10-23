@@ -551,7 +551,7 @@ export default function SettingsView({
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label">Privacy Policy</div>
-              <div className="settings-item-value">View our privacy policy</div>
+              <div className="settings-item-value">How your data, finances, and identity are protected</div>
             </div>
             <i className="ph ph-caret-right item-arrow"></i>
           </div>
@@ -566,7 +566,7 @@ export default function SettingsView({
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label">Version</div>
-              <div className="settings-item-value">2.3.20 (Web Edition)</div>
+              <div className="settings-item-value">2.4.0 (Web Edition) • Latest</div>
             </div>
             <i className="ph ph-caret-right item-arrow"></i>
           </div>
@@ -1048,7 +1048,7 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
       {/* 5. Privacy Policy Modal */}
       {activeModal === 'privacy' && (
         <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="settings-modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="settings-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
             <div className="modal-dialog-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <i className="ph ph-shield-check" style={{ color: '#00bfa5', fontSize: '1.4rem' }}></i>
@@ -1059,18 +1059,21 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
               </button>
             </div>
 
-            <div className="legal-content">
-              <h4>1. Data Ownership</h4>
-              <p>Your expenses, groups, and settlements belong solely to you and your group members. SplitUP does not sell or distribute personal data to third parties.</p>
+            <div className="legal-content" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '4px' }}>
+              <h4>1. User Identity & Searchability</h4>
+              <p>When you register on SplitUP, your display name and unique <code>@username</code> handle are indexed so members can find and add you to expense groups. Your email address is kept confidential and used solely for secure sign-in and account recovery.</p>
 
-              <h4>2. Database & Cloud Sync</h4>
-              <p>When configured, data is securely synchronized with your private Turso SQLite database over encrypted HTTPS/TLS connections.</p>
+              <h4>2. Group Financial Privacy</h4>
+              <p>Expenses, split amounts, itemized lists, and settlements are strictly restricted to members of the specific group. Groups are private by default and cannot be joined without a 6-character invite code or secure QR invitation.</p>
 
-              <h4>3. Google Authentication</h4>
-              <p>When signing in with Google OAuth, we only access your public profile name and verified email address to establish your user identity.</p>
+              <h4>3. Bangladesh MFS Payment Data</h4>
+              <p>Your optional bKash, Nagad, and Rocket numbers are stored securely and only displayed to your group peers when they settle debts with you. SplitUP never asks for or stores your private MFS PINs or banking credentials.</p>
 
-              <h4>4. Local Backups</h4>
-              <p>You can export and download your complete dataset at any time from the Data section in Settings.</p>
+              <h4>4. Cloud Storage & Encryption</h4>
+              <p>Data synchronizes with your private Turso SQLite database over encrypted HTTPS/TLS connections. User passwords are protected using industry-standard cryptographic hashing algorithms.</p>
+
+              <h4>5. Data Ownership & Full Export</h4>
+              <p>You maintain 100% ownership of your data. You can download an unencrypted JSON backup of all your groups, expenses, and personal tracker entries at any time, or restore your records across any browser.</p>
             </div>
 
             <div className="form-actions" style={{ padding: '0 24px 20px', marginTop: '16px' }}>
@@ -1085,7 +1088,7 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
       {/* 6. Version Modal */}
       {activeModal === 'version' && (
         <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="settings-modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="settings-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
             <div className="modal-dialog-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <i className="ph ph-info" style={{ color: '#00bfa5', fontSize: '1.4rem' }}></i>
@@ -1096,37 +1099,53 @@ VITE_NAGAD_MERCHANT_ID=your_merchant_id`}
               </button>
             </div>
 
-            <div className="version-content">
+            <div className="version-content" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
               <div className="version-badge-container">
                 <div className="brand-icon-sm">
                   <i className="ph ph-intersect"></i>
                 </div>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '1.1rem' }}>SplitUP Web</h4>
-                  <span className="version-tag">Version 2.3.20</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                    <span className="version-tag">v2.4.0</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Latest Stable Release</span>
+                  </div>
                 </div>
               </div>
 
               <div className="features-list">
                 <div className="feature-item">
-                  <i className="ph ph-check"></i> Multi-Currency Support (31 currencies & flags)
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Unique @Username Handles:</strong> Live search and registered user discovery across all groups.</span>
                 </div>
                 <div className="feature-item">
-                  <i className="ph ph-check"></i> Group Expense Splitting with Join Codes
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Creator-Guarded Groups:</strong> Only group creators can remove members; prevents ghost/dummy accounts.</span>
                 </div>
                 <div className="feature-item">
-                  <i className="ph ph-check"></i> Personal Wallet & Custom Expense Tracker
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Smart Debt Simplification:</strong> Graph-based debt minimizer with support for 31 global currencies.</span>
                 </div>
                 <div className="feature-item">
-                  <i className="ph ph-check"></i> Full Turso Cloud & SQLite Sync
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Bangladesh MFS Integration:</strong> bKash, Nagad, and Rocket payout accounts with sandbox testing.</span>
                 </div>
                 <div className="feature-item">
-                  <i className="ph ph-check"></i> JSON Data Backup & Restore
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Personal Wallet & Topics:</strong> Dedicated personal budget tracker categorized by custom subjects.</span>
+                </div>
+                <div className="feature-item">
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Turso Cloud SQLite:</strong> Encrypted edge database synchronization with complete JSON backup & restore.</span>
+                </div>
+                <div className="feature-item">
+                  <i className="ph ph-check-circle"></i> 
+                  <span><strong>Instant Join via QR & Codes:</strong> Camera scanner and 6-digit codes for instant group onboarding.</span>
                 </div>
               </div>
 
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginTop: '16px' }}>
-                Developed with love for seamless bill sharing.
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', marginTop: '16px', marginBottom: '4px' }}>
+                Engineered with care for effortless bill splitting and personal budgeting.
               </p>
             </div>
 
