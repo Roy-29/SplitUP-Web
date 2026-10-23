@@ -143,6 +143,20 @@ export class LocalDatabase {
     localStorage.setItem('splitup_settlements', JSON.stringify(settlements));
   }
 
+  static searchUsers(query, excludeUserIds = []) {
+    const raw = (query || '').trim().toLowerCase().replace(/^@/, '');
+    const current = JSON.parse(localStorage.getItem('splitup_turso_user') || 'null');
+    const all = current ? [current] : [];
+    const excludeSet = new Set((excludeUserIds || []).map(String));
+    return all.filter(u => 
+      !excludeSet.has(String(u.id)) && (
+        (u.username && u.username.toLowerCase().includes(raw)) ||
+        (u.name && u.name.toLowerCase().includes(raw)) ||
+        (u.email && u.email.toLowerCase().includes(raw))
+      )
+    );
+  }
+
   static clearData() {
     localStorage.removeItem('splitup_members');
     localStorage.removeItem('splitup_expenses');

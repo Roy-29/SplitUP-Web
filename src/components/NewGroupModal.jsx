@@ -1,65 +1,178 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { isTursoConfigured, tursoCreateGroup, tursoAddMember } from '../lib/turso';
+import { 
+  isTursoConfigured, 
+  tursoCreateGroup, 
+  tursoAddMember, 
+  tursoSearchUsers, 
+  tursoGetSuggestedUsers 
+} from '../lib/turso';
+import { LocalDatabase } from '../store/db';
+import UserAvatar from './UserAvatar';
 import './Modal.css';
 
 export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser }) {
   const [groupName, setGroupName] = useState('');
-  const [memberName, setMemberName] = useState('');
-  const [members, setMembers] = useState(currentUser ? [currentUser.name] : []);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const searchTimeoutRef = useRef(null);
+
+  // Initialize selected users with current user as the creator
+  useEffect(() => {
+    if (currentUser) {
+      const creatorUsername = currentUser.username || (currentUser.email ? currentUser.email.split('@')[0] : 'you');
+      setSelectedUsers([{
+        id: currentUser.id,
+        name: currentUser.name,
+        username: creatorUsername,
+        email: currentUser.email,
+        avatar: currentUser.avatar || '',
+        isCreator: true
+      }]);
+    } else {
+      setSelectedUsers([]);
+    }
+    setGroupName('');
+    setSearchQuery('');
+    setSearchResults([]);
+    setErrorMsg('');
+  }, [isOpen, currentUser]);
+
+  // Load suggested registered users when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadSuggestions = async () => {
+      try {
+        const excludeIds = selectedUsers.map(u => u.id);
+        if (isTursoConfigured) {
+          const suggestions = await tursoGetSuggestedUsers(excludeIds, 6);
+          setSuggestedUsers(suggestions);
+        } else {
+          const suggestions = LocalDatabase.searchUsers('', excludeIds);
+          setSuggestedUsers(suggestions);
+        }
+      } catch (err) {
+        console.warn("Could not load suggested users:", err);
+      }
+    };
+
+    loadSuggestions();
+  }, [isOpen, selectedUsers.length]);
+
+  // Debounced search for registered users
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const excludeIds = selectedUsers.map(u => u.id);
+        let results = [];
+        if (isTursoConfigured) {
+          results = await tursoSearchUsers(trimmed, excludeIds);
+        } else {
+          results = LocalDatabase.searchUsers(trimmed, excludeIds);
+        }
+        setSearchResults(results);
+      } catch (err) {
+        console.error("Search users error:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchQuery, selectedUsers]);
 
   if (!isOpen) return null;
 
-  const handleAddMember = (e) => {
-    e.preventDefault();
-    const trimmed = memberName.trim();
-    if (trimmed && !members.includes(trimmed)) {
-      setMembers([...members, trimmed]);
-      setMemberName('');
-    }
+  const handleSelectUser = (user) => {
+    if (selectedUsers.some(u => String(u.id) === String(user.id))) return;
+    setSelectedUsers(prev => [...prev, user]);
+    setSearchQuery('');
+    setSearchResults([]);
+    setErrorMsg('');
   };
 
-  const handleRemoveMember = (name) => {
-    setMembers(members.filter(m => m !== name));
+  const handleRemoveUser = (userId) => {
+    setSelectedUsers(prev => prev.filter(u => String(u.id) !== String(userId)));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!groupName.trim() || members.length < 2) return;
+    setErrorMsg('');
+
+    if (!groupName.trim()) {
+      setErrorMsg('Please enter a group name.');
+      return;
+    }
+
+    if (selectedUsers.length < 2) {
+      setErrorMsg('Please search and add at least one other registered member to the group.');
+      return;
+    }
 
     setIsLoading(true);
-    
+
     try {
       if (isTursoConfigured) {
         const group = await tursoCreateGroup(groupName.trim(), currentUser?.id || 'user');
-        for (const m of members) {
-          if (currentUser && m === currentUser.name) {
-            await tursoAddMember(group.id, currentUser.name, currentUser.email || '', currentUser.id);
-          } else {
-            const isEmail = m.includes('@');
-            await tursoAddMember(group.id, isEmail ? m.split('@')[0] : m, isEmail ? m.trim().toLowerCase() : '');
-          }
+        
+        for (const u of selectedUsers) {
+          await tursoAddMember(group.id, u.name, u.email || '', u.id, u.phone || '');
         }
+
         alert(`Group "${group.name}" created successfully!\nInvite Code: ${group.joinCode}\n(You can share this code with friends so they can join!)`);
+      } else {
+        const groupId = `grp_${Date.now()}`;
+        for (const u of selectedUsers) {
+          LocalDatabase.addMember({
+            groupId,
+            name: u.name,
+            email: u.email || '',
+            userId: u.id,
+            phone: u.phone || ''
+          });
+        }
       }
+
       setIsLoading(false);
-      setGroupName('');
-      setMemberName('');
-      setMembers(currentUser ? [currentUser.name] : []);
       onSuccess?.();
       onClose();
     } catch (err) {
       console.error("Error creating group:", err);
+      setErrorMsg(err.message || 'Failed to create group.');
       setIsLoading(false);
-      onSuccess?.();
-      onClose();
     }
   };
 
+  const displayedList = searchQuery.trim() ? searchResults : suggestedUsers;
+
   return createPortal(
-    <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay animate-fade-in" onClick={onClose} style={{ zIndex: 1100 }}>
+      <div 
+        className="modal-content glass-panel" 
+        onClick={e => e.stopPropagation()} 
+        style={{ maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        {/* Header */}
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div className="modal-icon" style={{ background: 'rgba(108, 92, 231, 0.15)', color: 'var(--accent-primary)' }}>
@@ -67,89 +180,243 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
             </div>
             <div>
               <h2>Create Group</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '2px' }}>Add members to start splitting</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: '2px' }}>
+                Search registered users to build your circle
+              </p>
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}>
+          <button className="close-btn" onClick={onClose} title="Close">
             <i className="ph ph-x"></i>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-body">
-          <div className="form-group">
-            <label>Group Name</label>
+        <form onSubmit={handleSubmit} className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {errorMsg && (
+            <div style={{ 
+              background: 'rgba(235, 77, 75, 0.12)', 
+              border: '1px solid rgba(235, 77, 75, 0.3)', 
+              color: 'var(--danger)', 
+              borderRadius: '8px', 
+              padding: '10px 14px', 
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <i className="ph ph-warning-circle" style={{ fontSize: '1.1rem' }}></i>
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Group Name Field */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: '0.88rem', fontWeight: 600 }}>Group Name *</label>
             <input 
               type="text" 
-              placeholder="e.g., Weekend Trip, Flatmates" 
+              placeholder="e.g., Weekend Trip, Flatmates, Boi Mela" 
               value={groupName}
               onChange={e => setGroupName(e.target.value)}
               required
               className="form-input"
+              autoFocus
             />
           </div>
 
-          <div className="form-group">
-            <label>Members ({members.length})</label>
-            
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-              {members.map(name => (
-                <div key={name} style={{ 
-                  display: 'flex', alignItems: 'center', gap: '6px', 
-                  background: 'rgba(108, 92, 231, 0.1)', padding: '6px 12px', 
-                  borderRadius: '16px', fontSize: '0.85rem', color: 'var(--text-primary)'
-                }}>
-                  {name}
-                  {name !== currentUser?.name && (
+          {/* Selected Members Section */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: '0.88rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Group Members ({selectedUsers.length})</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                {selectedUsers.length >= 2 ? 'Ready to create' : 'Add at least 1 more member'}
+              </span>
+            </label>
+
+            {/* Selected Chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '40px', padding: '6px 0' }}>
+              {selectedUsers.map(user => (
+                <div 
+                  key={user.id} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    background: user.isCreator ? 'rgba(108, 92, 231, 0.2)' : 'var(--bg-tertiary)', 
+                    border: `1px solid ${user.isCreator ? 'rgba(108, 92, 231, 0.4)' : 'var(--glass-border)'}`,
+                    padding: '4px 10px', 
+                    borderRadius: '20px', 
+                    fontSize: '0.84rem', 
+                    color: 'var(--text-primary)'
+                  }}
+                >
+                  <UserAvatar user={user} size={24} fontSize="0.65rem" />
+                  <span style={{ fontWeight: 600 }}>{user.name}</span>
+                  {user.username && (
+                    <span style={{ color: 'var(--accent-secondary)', fontSize: '0.75rem', opacity: 0.9 }}>
+                      @{user.username}
+                    </span>
+                  )}
+                  {user.isCreator ? (
+                    <span style={{ fontSize: '0.68rem', background: 'var(--accent-primary)', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                      Creator
+                    </span>
+                  ) : (
                     <i 
                       className="ph ph-x" 
-                      style={{ cursor: 'pointer', opacity: 0.6 }} 
-                      onClick={() => handleRemoveMember(name)}
+                      style={{ cursor: 'pointer', opacity: 0.6, fontSize: '0.85rem', marginLeft: '2px' }} 
+                      onClick={() => handleRemoveUser(user.id)}
+                      title="Remove member"
                     />
                   )}
                 </div>
               ))}
             </div>
+          </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
+          {/* Search Registered Users Section */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: '0.88rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <i className="ph ph-magnifying-glass" style={{ color: 'var(--accent-primary)' }}></i>
+              Search Registered Users
+            </label>
+            <div style={{ position: 'relative' }}>
               <input 
                 type="text" 
-                placeholder="Enter name and press Add" 
-                value={memberName}
-                onChange={e => setMemberName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddMember(e);
-                  }
-                }}
+                placeholder="Search by @username, email, or full name..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
                 className="form-input"
-                style={{ flex: 1 }}
+                style={{ paddingLeft: '36px' }}
               />
-              <button 
-                type="button" 
-                className="btn-secondary" 
-                onClick={handleAddMember}
-                disabled={!memberName.trim()}
-                style={{ padding: '0 16px' }}
-              >
-                Add
-              </button>
+              <i 
+                className={`ph ${isSearching ? 'ph-spinner ph-spin' : 'ph-user-focus'}`} 
+                style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+              />
+              {searchQuery && (
+                <i 
+                  className="ph ph-x"
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--text-muted)' }}
+                />
+              )}
+            </div>
+
+            {/* Search Results / Suggestions Dropdown */}
+            <div style={{ marginTop: '10px' }}>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {searchQuery.trim() ? `Search Results (${searchResults.length})` : 'Suggested Contacts'}
+              </div>
+
+              {isSearching ? (
+                <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  <i className="ph ph-spinner ph-spin" style={{ marginRight: '6px' }}></i> Searching registered accounts...
+                </div>
+              ) : displayedList.length === 0 ? (
+                <div style={{ 
+                  padding: '16px', 
+                  textAlign: 'center', 
+                  background: 'var(--bg-tertiary)', 
+                  borderRadius: '10px', 
+                  border: '1px dashed var(--glass-border)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.83rem'
+                }}>
+                  {searchQuery.trim() ? (
+                    <>
+                      <i className="ph ph-user-circle-dashed" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '4px', opacity: 0.6 }}></i>
+                      <span>No registered user found for "<strong>{searchQuery}</strong>".</span>
+                      <div style={{ fontSize: '0.75rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
+                        Users must have a registered SplitUP account to be added.
+                      </div>
+                    </>
+                  ) : (
+                    <span>All your registered contacts are already added.</span>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {displayedList.map(u => (
+                    <div 
+                      key={u.id}
+                      onClick={() => handleSelectUser(u)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--glass-border)',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s ease'
+                      }}
+                      className="hover-card"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <UserAvatar user={u} size={32} fontSize="0.75rem" />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{u.name}</span>
+                            {u.username && (
+                              <span style={{ fontSize: '0.74rem', color: 'var(--accent-secondary)' }}>
+                                @{u.username}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.email}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        type="button" 
+                        className="btn-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectUser(u);
+                        }}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '6px' }}
+                      >
+                        <i className="ph ph-plus"></i> Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Unregistered friend note */}
+            <div style={{ 
+              marginTop: '12px', 
+              padding: '10px 12px', 
+              background: 'rgba(108, 92, 231, 0.08)', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(108, 92, 231, 0.2)',
+              fontSize: '0.78rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.4
+            }}>
+              <i className="ph ph-info" style={{ color: 'var(--accent-primary)', marginRight: '5px' }}></i>
+              Can't find a friend? Share your group's invite code after creating so they can sign up and join with their unique identity.
             </div>
           </div>
 
-          <div className="modal-footer" style={{ marginTop: '32px' }}>
-            <button type="button" className="btn-secondary" onClick={onClose}>
+          {/* Footer Actions */}
+          <div className="modal-footer" style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>
               Cancel
             </button>
             <button 
               type="submit" 
               className="btn-primary" 
-              disabled={isLoading || !groupName.trim() || members.length < 2}
+              disabled={isLoading || !groupName.trim() || selectedUsers.length < 2}
             >
               {isLoading ? (
                 <span><i className="ph ph-spinner ph-spin"></i> Creating...</span>
               ) : (
-                'Create Group'
+                <>
+                  <i className="ph ph-check"></i> Create Group ({selectedUsers.length} members)
+                </>
               )}
             </button>
           </div>

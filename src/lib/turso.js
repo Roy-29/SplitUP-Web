@@ -123,6 +123,33 @@ export async function initTursoTables() {
     try {
       await tursoClient.execute("ALTER TABLE members ADD COLUMN phone TEXT;");
     } catch (_) {}
+    try {
+      await tursoClient.execute("ALTER TABLE users ADD COLUMN username TEXT;");
+    } catch (_) {}
+
+    // Backfill unique username for any existing users missing one
+    try {
+      const missingUsers = await tursoClient.execute("SELECT id, name, email FROM users WHERE username IS NULL OR username = '';");
+      for (const row of missingUsers.rows) {
+        let base = (row.email ? String(row.email).split('@')[0] : String(row.name))
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '');
+        if (!base || base.length < 3) base = `user_${Math.random().toString(36).substring(2, 6)}`;
+        
+        // Ensure uniqueness
+        const check = await tursoClient.execute({
+          sql: "SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1;",
+          args: [base, String(row.id)]
+        });
+        const assignedUsername = check.rows.length > 0 ? `${base}_${Math.random().toString(36).substring(2, 5)}` : base;
+        await tursoClient.execute({
+          sql: "UPDATE users SET username = ? WHERE id = ?;",
+          args: [assignedUsername, String(row.id)]
+        });
+      }
+    } catch (migErr) {
+      console.warn("Notice: user username migration backfill:", migErr);
+    }
 
     isTablesInitialized = true;
     console.log("Turso tables initialized successfully with personal & join code support.");
@@ -134,7 +161,7 @@ export async function initTursoTables() {
 
 // ----------------- Auth Operations -----------------
 
-export async function tursoSignUp(name, email, password, shortProfile = '') {
+export async function tursoSignUp(name, email, password, shortProfile = '', username = '') {
   if (!tursoClient) {
     throw new Error("Turso database is not configured. Please add VITE_TURSO_DATABASE_URL and VITE_TURSO_AUTH_TOKEN in your .env file.");
   }
@@ -153,18 +180,42 @@ export async function tursoSignUp(name, email, password, shortProfile = '') {
     throw new Error("A user with this email address already exists.");
   }
 
+  // Derive and validate unique username
+  let cleanUsername = (username || normalizedEmail.split('@')[0] || name)
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9_]/g, '');
+
+  if (!cleanUsername || cleanUsername.length < 3) {
+    cleanUsername = `user_${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  const existingUsername = await tursoClient.execute({
+    sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+    args: [cleanUsername]
+  });
+
+  if (existingUsername.rows.length > 0) {
+    if (username) {
+      throw new Error(`The username @${cleanUsername} is already taken. Please choose another.`);
+    }
+    cleanUsername = `${cleanUsername}_${Math.random().toString(36).substring(2, 5)}`;
+  }
+
   const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
 
   await tursoClient.execute({
-    sql: 'INSERT INTO users (id, name, email, password, shortProfile, createdAt) VALUES (?, ?, ?, ?, ?, ?);',
-    args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), now]
+    sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
+    args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), cleanUsername, now]
   });
 
   const user = {
     id: userId,
     name: name.trim(),
     email: normalizedEmail,
+    username: cleanUsername,
     shortProfile: shortProfile.trim()
   };
 
@@ -172,33 +223,34 @@ export async function tursoSignUp(name, email, password, shortProfile = '') {
   return user;
 }
 
-export async function tursoSignIn(email, password) {
+export async function tursoSignIn(emailOrUsername, password) {
   if (!tursoClient) {
     throw new Error("Turso database is not configured. Please add VITE_TURSO_DATABASE_URL and VITE_TURSO_AUTH_TOKEN in your .env file.");
   }
 
   await initTursoTables();
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedInput = emailOrUsername.trim().toLowerCase().replace(/^@/, '');
 
   const result = await tursoClient.execute({
-    sql: 'SELECT id, name, email, shortProfile, avatar, password, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE email = ? LIMIT 1;',
-    args: [normalizedEmail]
+    sql: 'SELECT id, name, email, username, shortProfile, avatar, password, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE LOWER(email) = ? OR LOWER(username) = ? LIMIT 1;',
+    args: [normalizedInput, normalizedInput]
   });
 
   if (result.rows.length === 0) {
-    throw new Error("Invalid email or password.");
+    throw new Error("Invalid username/email or password.");
   }
 
   const userRow = result.rows[0];
   if (userRow.password !== password) {
-    throw new Error("Invalid email or password.");
+    throw new Error("Invalid username/email or password.");
   }
 
   const user = {
     id: String(userRow.id),
     name: String(userRow.name),
     email: String(userRow.email),
+    username: userRow.username ? String(userRow.username).replace(/^@/, '') : String(userRow.email).split('@')[0],
     shortProfile: userRow.shortProfile ? String(userRow.shortProfile) : '',
     avatar: userRow.avatar ? String(userRow.avatar) : '',
     bkashNumber: userRow.bkashNumber ? String(userRow.bkashNumber) : '',
@@ -232,11 +284,11 @@ export async function tursoGetMembers(groupId = null) {
   await initTursoTables();
 
   const sql = groupId 
-    ? `SELECT m.*, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
+    ? `SELECT m.*, u.username, u.avatar, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
        FROM members m 
        LEFT JOIN users u ON (m.userId = u.id OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(u.email)))
        WHERE m.groupId = ?;` 
-    : `SELECT m.*, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
+    : `SELECT m.*, u.username, u.avatar, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
        FROM members m 
        LEFT JOIN users u ON (m.userId = u.id OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(u.email)));`;
   const args = groupId ? [String(groupId)] : [];
@@ -246,6 +298,8 @@ export async function tursoGetMembers(groupId = null) {
     id: isNaN(Number(row.id)) ? String(row.id) : Number(row.id),
     name: String(row.name),
     email: row.email ? String(row.email) : '',
+    username: row.username ? String(row.username).replace(/^@/, '') : (row.email ? String(row.email).split('@')[0] : ''),
+    avatar: row.avatar ? String(row.avatar) : '',
     phone: row.phone ? String(row.phone) : '',
     groupId: isNaN(Number(row.groupId)) ? String(row.groupId) : Number(row.groupId),
     userId: row.userId ? String(row.userId) : null,
@@ -265,6 +319,63 @@ export function generateJoinCode() {
   return code;
 }
 
+export async function tursoSearchUsers(query, excludeUserIds = []) {
+  if (!tursoClient) return [];
+  await initTursoTables();
+  const raw = (query || '').trim();
+  const q = raw.replace(/^@/, '').toLowerCase();
+  if (!q) return [];
+
+  const searchPattern = `%${q}%`;
+  const res = await tursoClient.execute({
+    sql: `SELECT id, name, email, username, avatar, bkashNumber, nagadNumber, rocketNumber, shortProfile 
+          FROM users 
+          WHERE (
+            LOWER(username) LIKE ? OR 
+            LOWER(email) LIKE ? OR 
+            LOWER(name) LIKE ? OR 
+            bkashNumber LIKE ? OR 
+            nagadNumber LIKE ?
+          )
+          LIMIT 15;`,
+    args: [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]
+  });
+
+  const excludeSet = new Set((excludeUserIds || []).map(String));
+  return res.rows
+    .filter(row => !excludeSet.has(String(row.id)))
+    .map(row => ({
+      id: String(row.id),
+      name: String(row.name),
+      email: String(row.email),
+      username: row.username ? String(row.username).replace(/^@/, '') : String(row.email).split('@')[0],
+      avatar: row.avatar ? String(row.avatar) : '',
+      shortProfile: row.shortProfile ? String(row.shortProfile) : '',
+      phone: row.bkashNumber || row.nagadNumber || row.rocketNumber || ''
+    }));
+}
+
+export async function tursoGetSuggestedUsers(excludeUserIds = [], limit = 6) {
+  if (!tursoClient) return [];
+  await initTursoTables();
+  const res = await tursoClient.execute({
+    sql: `SELECT id, name, email, username, avatar, shortProfile FROM users ORDER BY createdAt DESC LIMIT 20;`,
+    args: []
+  });
+  const excludeSet = new Set((excludeUserIds || []).map(String));
+  return res.rows
+    .filter(row => !excludeSet.has(String(row.id)))
+    .slice(0, limit)
+    .map(row => ({
+      id: String(row.id),
+      name: String(row.name),
+      email: String(row.email),
+      username: row.username ? String(row.username).replace(/^@/, '') : String(row.email).split('@')[0],
+      avatar: row.avatar ? String(row.avatar) : '',
+      shortProfile: row.shortProfile ? String(row.shortProfile) : ''
+    }));
+}
+
 export async function tursoAddMember(groupId, name, email = '', userId = null, phone = '') {
   if (!tursoClient) throw new Error("Turso client is not initialized.");
   await initTursoTables();
@@ -274,11 +385,28 @@ export async function tursoAddMember(groupId, name, email = '', userId = null, p
   let resolvedEmail = email ? email.trim().toLowerCase() : null;
   let resolvedPhone = phone ? phone.trim() : null;
 
-  // If email was provided and no userId, check if user with this email is already registered
+  // 1. If userId is provided, verify it exists in users table and get canonical details
+  if (resolvedUserId) {
+    try {
+      const userCheck = await tursoClient.execute({
+        sql: 'SELECT id, name, email, bkashNumber, nagadNumber, rocketNumber FROM users WHERE id = ? LIMIT 1;',
+        args: [String(resolvedUserId)]
+      });
+      if (userCheck.rows.length > 0) {
+        resolvedName = String(userCheck.rows[0].name);
+        resolvedEmail = userCheck.rows[0].email ? String(userCheck.rows[0].email).toLowerCase() : resolvedEmail;
+        if (!resolvedPhone) {
+          resolvedPhone = userCheck.rows[0].bkashNumber || userCheck.rows[0].nagadNumber || userCheck.rows[0].rocketNumber || null;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. If no userId but email was provided, check users table
   if (resolvedEmail && !resolvedUserId) {
     try {
       const userCheck = await tursoClient.execute({
-        sql: 'SELECT id, name FROM users WHERE LOWER(email) = ? LIMIT 1;',
+        sql: 'SELECT id, name, email FROM users WHERE LOWER(email) = ? LIMIT 1;',
         args: [resolvedEmail]
       });
       if (userCheck.rows.length > 0) {
@@ -288,24 +416,40 @@ export async function tursoAddMember(groupId, name, email = '', userId = null, p
     } catch (_) {}
   }
 
-  // If phone was provided and no userId, check if registered user matches phone
-  if (resolvedPhone && !resolvedUserId) {
+  // 3. If no userId but username or name was provided, search users table
+  if (!resolvedUserId) {
+    const cleanSearch = resolvedName.replace(/^@/, '').toLowerCase();
     try {
-      const phoneCheck = await tursoClient.execute({
-        sql: 'SELECT id, name FROM users WHERE bkashNumber = ? OR nagadNumber = ? OR rocketNumber = ? LIMIT 1;',
-        args: [resolvedPhone, resolvedPhone, resolvedPhone]
+      const userCheck = await tursoClient.execute({
+        sql: 'SELECT id, name, email FROM users WHERE LOWER(username) = ? OR LOWER(name) = ? LIMIT 1;',
+        args: [cleanSearch, resolvedName.toLowerCase()]
       });
-      if (phoneCheck.rows.length > 0) {
-        resolvedUserId = String(phoneCheck.rows[0].id);
-        if (!resolvedName) resolvedName = String(phoneCheck.rows[0].name);
+      if (userCheck.rows.length > 0) {
+        resolvedUserId = String(userCheck.rows[0].id);
+        if (!resolvedEmail && userCheck.rows[0].email) resolvedEmail = String(userCheck.rows[0].email);
+        resolvedName = String(userCheck.rows[0].name);
       }
     } catch (_) {}
+  }
+
+  // Strict enforcement: A member MUST be a registered user with a valid account
+  if (!resolvedUserId) {
+    throw new Error(`Only registered SplitUP accounts can be added to a group. "${resolvedName}" does not have an account. Please share the group invite code with them so they can register and join!`);
+  }
+
+  // Check if member already exists in this group
+  const existingInGroup = await tursoClient.execute({
+    sql: 'SELECT id FROM members WHERE groupId = ? AND (userId = ? OR (email IS NOT NULL AND LOWER(email) = ?));',
+    args: [String(groupId), String(resolvedUserId), (resolvedEmail || '').toLowerCase()]
+  });
+  if (existingInGroup.rows.length > 0) {
+    throw new Error(`"${resolvedName}" is already a member of this group.`);
   }
 
   const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   await tursoClient.execute({
     sql: 'INSERT INTO members (id, name, email, phone, groupId, userId) VALUES (?, ?, ?, ?, ?, ?);',
-    args: [id, resolvedName, resolvedEmail, resolvedPhone, String(groupId), resolvedUserId]
+    args: [id, resolvedName, resolvedEmail, resolvedPhone, String(groupId), String(resolvedUserId)]
   });
 
   return { id, name: resolvedName, email: resolvedEmail, phone: resolvedPhone, groupId, userId: resolvedUserId };
@@ -340,9 +484,31 @@ export async function tursoUpdateMember(memberId, { name, email, phone }) {
   });
 }
 
-export async function tursoDeleteMember(memberId) {
+export async function tursoDeleteMember(memberId, groupId = null, requestedByUserId = null) {
   if (!tursoClient || !memberId) return;
   await initTursoTables();
+
+  // Strict security check: Only group creator can remove other members
+  if (groupId && requestedByUserId) {
+    const grpRes = await tursoClient.execute({
+      sql: 'SELECT createdBy FROM groups WHERE id = ? LIMIT 1;',
+      args: [String(groupId)]
+    });
+    if (grpRes.rows.length > 0) {
+      const creator = String(grpRes.rows[0].createdBy);
+      const memRes = await tursoClient.execute({
+        sql: 'SELECT userId FROM members WHERE id = ? LIMIT 1;',
+        args: [String(memberId)]
+      });
+      const memberUserId = memRes.rows.length > 0 ? String(memRes.rows[0].userId) : null;
+      const isSelf = memberUserId && String(memberUserId) === String(requestedByUserId);
+      const isCreator = String(creator) === String(requestedByUserId);
+
+      if (!isCreator && !isSelf) {
+        throw new Error("Only the group creator can remove members from this group.");
+      }
+    }
+  }
 
   await tursoClient.execute({
     sql: 'DELETE FROM members WHERE id = ?;',
@@ -915,13 +1081,22 @@ export async function tursoGoogleSignIn(credentialToken) {
 
   // Check if user already exists in Turso
   const existing = await tursoClient.execute({
-    sql: 'SELECT id, name, email, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE email = ? LIMIT 1;',
+    sql: 'SELECT id, name, email, username, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE email = ? LIMIT 1;',
     args: [email]
   });
 
   let user;
   if (existing.rows.length > 0) {
     const row = existing.rows[0];
+    let username = row.username ? String(row.username).replace(/^@/, '') : email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!row.username) {
+      try {
+        await tursoClient.execute({
+          sql: 'UPDATE users SET username = ? WHERE email = ?;',
+          args: [username, email]
+        });
+      } catch (_) {}
+    }
     if (avatar) {
       try {
         await tursoClient.execute({
@@ -934,6 +1109,7 @@ export async function tursoGoogleSignIn(credentialToken) {
       id: String(row.id),
       name: String(row.name),
       email: String(row.email),
+      username,
       shortProfile: row.shortProfile ? String(row.shortProfile) : '',
       avatar: avatar || (row.avatar ? String(row.avatar) : ''),
       bkashNumber: row.bkashNumber ? String(row.bkashNumber) : '',
@@ -945,16 +1121,28 @@ export async function tursoGoogleSignIn(credentialToken) {
     // New Google user! Register in users
     const userId = `usr_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = Date.now();
+    let cleanUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!cleanUsername || cleanUsername.length < 3) cleanUsername = `user_${Math.random().toString(36).substring(2, 6)}`;
+
+    // Check username uniqueness
+    const taken = await tursoClient.execute({
+      sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+      args: [cleanUsername]
+    });
+    if (taken.rows.length > 0) {
+      cleanUsername = `${cleanUsername}_${Math.random().toString(36).substring(2, 5)}`;
+    }
 
     await tursoClient.execute({
-      sql: 'INSERT INTO users (id, name, email, password, shortProfile, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?);',
-      args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', avatar, now, 'BKASH']
+      sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+      args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', cleanUsername, avatar, now, 'BKASH']
     });
 
     user = {
       id: userId,
       name,
       email,
+      username: cleanUsername,
       shortProfile: 'Google Account',
       avatar,
       bkashNumber: '',
@@ -970,7 +1158,7 @@ export async function tursoGoogleSignIn(credentialToken) {
 
 // ----------------- Profile & Data Backup/Restore -----------------
 
-export async function tursoUpdateUserProfile(userId, { name, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs }) {
+export async function tursoUpdateUserProfile(userId, { name, username, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs }) {
   const current = tursoGetCurrentUser() || {};
   const trimmedName = (name !== undefined ? name : current.name || '').trim();
   const trimmedProfile = (shortProfile !== undefined ? shortProfile : current.shortProfile || '').trim();
@@ -980,11 +1168,30 @@ export async function tursoUpdateUserProfile(userId, { name, shortProfile, avata
   const updatedRocket = rocketNumber !== undefined ? rocketNumber.trim() : (current.rocketNumber || '');
   const updatedPrimaryMfs = primaryMfs !== undefined ? primaryMfs : (current.primaryMfs || 'BKASH');
 
+  let updatedUsername = current.username || (current.email ? current.email.split('@')[0] : 'user');
+  if (username !== undefined) {
+    const cleanUser = username.trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '');
+    if (cleanUser.length < 3) {
+      throw new Error("Username must be at least 3 characters and contain only letters, numbers, or underscores.");
+    }
+    if (tursoClient) {
+      const taken = await tursoClient.execute({
+        sql: 'SELECT id FROM users WHERE LOWER(username) = ? AND id != ? LIMIT 1;',
+        args: [cleanUser, String(userId)]
+      });
+      if (taken.rows.length > 0) {
+        throw new Error(`The username @${cleanUser} is already taken. Please choose another.`);
+      }
+    }
+    updatedUsername = cleanUser;
+  }
+
   if (!tursoClient) {
     // Offline / local fallback
     const updated = {
       ...current,
       name: trimmedName,
+      username: updatedUsername,
       shortProfile: trimmedProfile,
       avatar: updatedAvatar,
       bkashNumber: updatedBkash,
@@ -999,9 +1206,10 @@ export async function tursoUpdateUserProfile(userId, { name, shortProfile, avata
   await initTursoTables();
 
   await tursoClient.execute({
-    sql: 'UPDATE users SET name = ?, shortProfile = ?, avatar = ?, bkashNumber = ?, nagadNumber = ?, rocketNumber = ?, primaryMfs = ? WHERE id = ?;',
+    sql: 'UPDATE users SET name = ?, username = ?, shortProfile = ?, avatar = ?, bkashNumber = ?, nagadNumber = ?, rocketNumber = ?, primaryMfs = ? WHERE id = ?;',
     args: [
-      trimmedName, 
+      trimmedName,
+      updatedUsername,
       trimmedProfile, 
       updatedAvatar, 
       updatedBkash, 
@@ -1022,6 +1230,7 @@ export async function tursoUpdateUserProfile(userId, { name, shortProfile, avata
   const updated = {
     ...current,
     name: trimmedName || current.name,
+    username: updatedUsername,
     shortProfile: trimmedProfile,
     avatar: updatedAvatar,
     bkashNumber: updatedBkash,
@@ -1040,13 +1249,13 @@ export async function tursoSyncCurrentUser(userId, email) {
     let result = null;
     if (userId) {
       result = await tursoClient.execute({
-        sql: 'SELECT id, name, email, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE id = ? LIMIT 1;',
+        sql: 'SELECT id, name, email, username, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE id = ? LIMIT 1;',
         args: [String(userId)]
       });
     }
     if ((!result || result.rows.length === 0) && email) {
       result = await tursoClient.execute({
-        sql: 'SELECT id, name, email, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE email = ? LIMIT 1;',
+        sql: 'SELECT id, name, email, username, shortProfile, avatar, bkashNumber, nagadNumber, rocketNumber, primaryMfs FROM users WHERE email = ? LIMIT 1;',
         args: [email.trim().toLowerCase()]
       });
     }
@@ -1059,6 +1268,7 @@ export async function tursoSyncCurrentUser(userId, email) {
         id: String(row.id),
         name: String(row.name),
         email: String(row.email),
+        username: row.username ? String(row.username).replace(/^@/, '') : String(row.email).split('@')[0],
         shortProfile: row.shortProfile ? String(row.shortProfile) : '',
         avatar: row.avatar ? String(row.avatar) : (current.avatar || ''),
         bkashNumber: row.bkashNumber ? String(row.bkashNumber) : '',

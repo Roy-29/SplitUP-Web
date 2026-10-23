@@ -32,6 +32,7 @@ export default function SettingsView({
   
   // Edit Profile form state
   const [profileName, setProfileName] = useState(currentUser?.name || '');
+  const [profileUsername, setProfileUsername] = useState(currentUser?.username || '');
   const [profileBio, setProfileBio] = useState(currentUser?.shortProfile || '');
   const [profileAvatar, setProfileAvatar] = useState(currentUser?.avatar || '');
   const [profileBkash, setProfileBkash] = useState(currentUser?.bkashNumber || '');
@@ -44,6 +45,7 @@ export default function SettingsView({
   // Sync state if currentUser changes
   React.useEffect(() => {
     setProfileName(currentUser?.name || '');
+    setProfileUsername(currentUser?.username || '');
     setProfileBio(currentUser?.shortProfile || '');
     setProfileAvatar(currentUser?.avatar || '');
     setProfileBkash(currentUser?.bkashNumber || '');
@@ -151,6 +153,7 @@ export default function SettingsView({
     try {
       await tursoUpdateUserProfile(currentUser.id, {
         name: profileName,
+        username: profileUsername,
         shortProfile: profileBio,
         avatar: profileAvatar,
         bkashNumber: profileBkash,
@@ -314,6 +317,7 @@ export default function SettingsView({
                   title="Edit Profile"
                   onClick={() => {
                     setProfileName(currentUser?.name || '');
+                    setProfileUsername(currentUser?.username || '');
                     setProfileBio(currentUser?.shortProfile || '');
                     setProfileAvatar(currentUser?.avatar || '');
                     setProfileMessage(null);
@@ -323,7 +327,20 @@ export default function SettingsView({
                   <i className="ph ph-pencil-simple"></i>
                 </button>
               </div>
-              <div className="profile-email">{currentUser?.email}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                <span style={{ 
+                  fontFamily: 'monospace', 
+                  fontSize: '0.8rem', 
+                  color: 'var(--primary-color, #00bfa5)', 
+                  fontWeight: 600,
+                  background: 'rgba(0, 191, 165, 0.1)',
+                  padding: '2px 8px',
+                  borderRadius: '6px'
+                }}>
+                  @{currentUser?.username || currentUser?.email?.split('@')[0]}
+                </span>
+                <span className="profile-email" style={{ margin: 0 }}>{currentUser?.email}</span>
+              </div>
             </div>
 
             <button className="sign-out-btn" onClick={handleLogoutClick} title="Sign Out">
@@ -760,6 +777,22 @@ export default function SettingsView({
                     placeholder="Enter your name"
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Username / Handle</label>
+                <div className="input-with-icon">
+                  <i className="ph ph-at"></i>
+                  <input 
+                    type="text" 
+                    value={profileUsername}
+                    onChange={(e) => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+                    required
+                    placeholder="e.g. swapnil29"
+                    maxLength={30}
+                  />
+                </div>
+                <span className="field-hint">Unique identity for group search (@{profileUsername || 'username'})</span>
               </div>
 
               <div className="form-group">

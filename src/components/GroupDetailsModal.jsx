@@ -1,10 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple } from '../lib/CurrencyManager';
 import { calculateBalances, simplifyDebts, isDebtor, isCreditor, matchesMember, getUserBalance } from '../lib/BalanceCalculator';
 import { avatarColorForName } from './GroupCard';
 import { normalizeCategory } from './ExpensesView';
 import { useConfirm } from './ConfirmModal';
+import { isTursoConfigured, tursoSearchUsers, tursoGetSuggestedUsers } from '../lib/turso';
+import { LocalDatabase } from '../store/db';
+import UserAvatar from './UserAvatar';
 import './Modal.css';
 
 const CATEGORY_META = {
@@ -181,30 +184,84 @@ export default function GroupDetailsModal({
     }
   };
 
-  const handleCreateMember = async (e) => {
-    e?.preventDefault();
-    if (!newMemberName.trim()) {
-      setMemberError('Member name is required');
-      return;
-    }
-    const exists = effectiveMembers.some(m => m.name.toLowerCase() === newMemberName.trim().toLowerCase());
-    if (exists) {
-      setMemberError(`"${newMemberName.trim()}" is already in this group`);
-      return;
-    }
+  const isGroupCreator = Boolean(
+    currentUser && group && (
+      String(group.createdBy) === String(currentUser.id) ||
+      String(group.createdBy) === String(currentUser.name) ||
+      (group.createdByEmail && currentUser.email && group.createdByEmail.toLowerCase() === currentUser.email.toLowerCase())
+    )
+  );
 
-    setMemberError('');
+  // Registered user search for adding members
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const userSearchTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (!isAddingMember) return;
+    const loadSuggestions = async () => {
+      try {
+        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
+        if (isTursoConfigured) {
+          const suggestions = await tursoGetSuggestedUsers(existingIds, 6);
+          setSuggestedUsers(suggestions);
+        } else {
+          const suggestions = LocalDatabase.searchUsers('', existingIds);
+          setSuggestedUsers(suggestions);
+        }
+      } catch (err) {
+        console.warn("Failed to load suggested users:", err);
+      }
+    };
+    loadSuggestions();
+  }, [isAddingMember, effectiveMembers]);
+
+  useEffect(() => {
+    if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
+    const q = userSearchQuery.trim();
+    if (!q) {
+      setUserSearchResults([]);
+      setIsSearchingUsers(false);
+      return;
+    }
+    setIsSearchingUsers(true);
+    userSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
+        let results = [];
+        if (isTursoConfigured) {
+          results = await tursoSearchUsers(q, existingIds);
+        } else {
+          results = LocalDatabase.searchUsers(q, existingIds);
+        }
+        setUserSearchResults(results);
+      } catch (err) {
+        console.error("Search user error:", err);
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 250);
+
+    return () => {
+      if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
+    };
+  }, [userSearchQuery, effectiveMembers]);
+
+  const handleAddRegisteredUser = async (targetUser) => {
     setIsSubmittingMember(true);
+    setMemberError('');
     try {
       await onAddMember?.(group.id, {
-        name: newMemberName.trim(),
-        email: newMemberEmail.trim(),
-        phone: newMemberPhone.trim()
+        name: targetUser.name,
+        email: targetUser.email || '',
+        userId: targetUser.id,
+        phone: targetUser.phone || ''
       });
-      setNewMemberName('');
-      setNewMemberEmail('');
-      setNewMemberPhone('');
       setIsAddingMember(false);
+      setUserSearchQuery('');
+      setUserSearchResults([]);
     } catch (err) {
       setMemberError(err.message || 'Failed to add member');
     } finally {
@@ -234,6 +291,22 @@ export default function GroupDetailsModal({
   };
 
   const handleRemoveMember = async (member, balance) => {
+    const isCurrentUser = String(member.id) === String(currentUser?.id) || 
+      (member.userId && String(member.userId) === String(currentUser?.id)) ||
+      (member.email && member.email.toLowerCase() === currentUser?.email?.toLowerCase());
+
+    // Strict requirement: Only group creator can remove other members
+    if (!isCurrentUser && !isGroupCreator) {
+      await confirm({
+        title: 'Only Creator Can Remove Members',
+        message: 'Only the creator of this group has permission to remove members.',
+        confirmText: 'Understood',
+        type: 'warning',
+        icon: 'ph-lock'
+      });
+      return;
+    }
+
     if (Math.abs(balance.netBalance) > 0.01) {
       await confirm({
         title: 'Cannot Remove Member',
@@ -245,8 +318,6 @@ export default function GroupDetailsModal({
       return;
     }
 
-    const isCurrentUser = String(member.id) === String(currentUser?.id) || (member.email && member.email === currentUser?.email);
-
     const ok = await confirm({
       title: isCurrentUser ? 'Leave Group?' : 'Remove Member?',
       message: isCurrentUser 
@@ -254,7 +325,7 @@ export default function GroupDetailsModal({
         : `Are you sure you want to remove "${member.name}" from "${group.name}"?`,
       confirmText: isCurrentUser ? 'Leave Group' : 'Remove Member',
       type: 'danger',
-      icon: 'ph-user-minus'
+      icon: isCurrentUser ? 'ph-sign-out' : 'ph-user-minus'
     });
 
     if (ok) {
@@ -740,9 +811,9 @@ export default function GroupDetailsModal({
               </div>
             )}
 
-            {/* Add Member Inline Panel */}
+            {/* Add Member Inline Panel: Registered User Search */}
             {isAddingMember && (
-              <form onSubmit={handleCreateMember} style={{
+              <div style={{
                 background: 'var(--bg-secondary)',
                 border: '1px solid var(--accent-primary)',
                 borderRadius: '12px',
@@ -754,12 +825,17 @@ export default function GroupDetailsModal({
                 boxShadow: '0 4px 16px rgba(108, 92, 231, 0.15)'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <i className="ph ph-user-plus" style={{ color: 'var(--accent-primary)' }}></i> Add Member to {group.name}
+                  <span style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="ph ph-user-plus" style={{ color: 'var(--accent-primary)' }}></i> Add Registered User to {group.name}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setIsAddingMember(false)}
+                    onClick={() => {
+                      setIsAddingMember(false);
+                      setUserSearchQuery('');
+                      setUserSearchResults([]);
+                      setMemberError('');
+                    }}
                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem' }}
                   >
                     <i className="ph ph-x"></i>
@@ -767,84 +843,147 @@ export default function GroupDetailsModal({
                 </div>
 
                 {memberError && (
-                  <div style={{ color: 'var(--danger)', fontSize: '0.8rem', background: 'rgba(235, 77, 75, 0.12)', border: '1px solid rgba(235, 77, 75, 0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                    {memberError}
+                  <div style={{ color: 'var(--danger)', fontSize: '0.8rem', background: 'rgba(235, 77, 75, 0.12)', border: '1px solid rgba(235, 77, 75, 0.25)', padding: '8px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="ph ph-warning-circle"></i>
+                    <span>{memberError}</span>
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Charlie / Tanvir"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-                      autoFocus
-                      required
+                {/* Search Input */}
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Search registered user by @username, email, or full name..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px 9px 36px', fontSize: '0.85rem', boxSizing: 'border-box', borderRadius: '8px' }}
+                    autoFocus
+                  />
+                  <i 
+                    className={`ph ${isSearchingUsers ? 'ph-spinner ph-spin' : 'ph-magnifying-glass'}`} 
+                    style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                  />
+                  {userSearchQuery && (
+                    <i 
+                      className="ph ph-x"
+                      onClick={() => setUserSearchQuery('')}
+                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--text-muted)' }}
                     />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                      Email Address (Optional)
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="e.g. charlie@gmail.com"
-                      value={newMemberEmail}
-                      onChange={(e) => setNewMemberEmail(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                      Phone / MFS (Optional)
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="e.g. 017xxxxxxxx"
-                      value={newMemberPhone}
-                      onChange={(e) => setNewMemberPhone(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-                    />
-                  </div>
+                  )}
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setIsAddingMember(false);
-                      setMemberError('');
-                    }}
-                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={isSubmittingMember || !newMemberName.trim()}
-                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-                  >
-                    {isSubmittingMember ? (
-                      <>
-                        <i className="ph ph-spinner ph-spin"></i> Adding...
-                      </>
-                    ) : (
-                      <>
-                        <i className="ph ph-check"></i> Save Member
-                      </>
-                    )}
-                  </button>
+                {/* Search Results / Suggestions list */}
+                <div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {userSearchQuery.trim() ? `Search Results (${userSearchResults.length})` : 'Suggested Registered Users'}
+                  </div>
+
+                  {isSearchingUsers ? (
+                    <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      <i className="ph ph-spinner ph-spin" style={{ marginRight: '6px' }}></i> Searching registered accounts...
+                    </div>
+                  ) : (userSearchQuery.trim() ? userSearchResults : suggestedUsers).length === 0 ? (
+                    <div style={{
+                      padding: '16px',
+                      textAlign: 'center',
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: '8px',
+                      border: '1px dashed var(--glass-border)',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.82rem'
+                    }}>
+                      {userSearchQuery.trim() ? (
+                        <>
+                          <i className="ph ph-user-circle-dashed" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '4px', opacity: 0.6 }}></i>
+                          <span>No registered user found for "<strong>{userSearchQuery}</strong>".</span>
+                          <div style={{ fontSize: '0.75rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
+                            Every member must have a registered SplitUP account.
+                          </div>
+                        </>
+                      ) : (
+                        <span>All your registered contacts are already in this group.</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {(userSearchQuery.trim() ? userSearchResults : suggestedUsers).map(u => (
+                        <div
+                          key={u.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 12px',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: '8px',
+                            border: '1px solid var(--glass-border)',
+                            transition: 'border-color 0.15s ease'
+                          }}
+                          className="hover-card"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            <UserAvatar user={u} size={32} fontSize="0.75rem" />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{u.name}</span>
+                                {u.username && (
+                                  <span style={{ fontSize: '0.74rem', color: 'var(--accent-secondary)' }}>
+                                    @{u.username}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {u.email}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={isSubmittingMember}
+                            onClick={() => handleAddRegisteredUser(u)}
+                            style={{ fontSize: '0.76rem', padding: '5px 12px', borderRadius: '6px' }}
+                          >
+                            <i className="ph ph-plus"></i> Add to Group
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </form>
+
+                {/* Helper notice to invite unregistered friends */}
+                <div style={{
+                  padding: '10px 12px',
+                  background: 'rgba(108, 92, 231, 0.08)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(108, 92, 231, 0.2)',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="ph ph-link" style={{ color: 'var(--accent-primary)', fontSize: '0.95rem' }}></i>
+                    <span>Invite code: <strong style={{ color: 'var(--text-primary)', letterSpacing: '1px' }}>{group.joinCode}</strong></span>
+                  </div>
+                  {group.joinCode && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={handleCopyCode}
+                      style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                    >
+                      <i className={`ph ${copiedCode ? 'ph-check' : 'ph-copy'}`}></i>
+                      <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Members List */}
@@ -983,6 +1122,11 @@ export default function GroupDetailsModal({
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</span>
+                            {member.username && (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)', opacity: 0.9 }}>
+                                @{member.username}
+                              </span>
+                            )}
                             {isCurrentUser && (
                               <span style={{ fontSize: '0.7rem', background: 'rgba(108, 92, 231, 0.2)', color: 'var(--accent-secondary)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                 You
@@ -1056,7 +1200,7 @@ export default function GroupDetailsModal({
                             </button>
                           )}
 
-                          {onDeleteMember && (
+                          {onDeleteMember && (isCurrentUser || isGroupCreator) && (
                             <button
                               type="button"
                               className="btn-icon delete-btn"
@@ -1064,7 +1208,7 @@ export default function GroupDetailsModal({
                               style={{ width: '28px', height: '28px' }}
                               title={isCurrentUser ? "Leave group" : "Remove member"}
                             >
-                              <i className="ph ph-user-minus" style={{ fontSize: '0.85rem' }}></i>
+                              <i className={isCurrentUser ? "ph ph-sign-out" : "ph ph-user-minus"} style={{ fontSize: '0.85rem' }}></i>
                             </button>
                           )}
                         </div>

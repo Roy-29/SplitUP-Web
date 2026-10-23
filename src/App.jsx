@@ -432,13 +432,13 @@ function App() {
     loadData();
   };
 
-  const handleAddMember = async (groupId, { name, email, phone }) => {
+  const handleAddMember = async (groupId, { name, email, phone, userId }) => {
     try {
       let newMem = null;
       if (isTursoConfigured) {
-        newMem = await tursoAddMember(groupId, name, email, null, phone);
+        newMem = await tursoAddMember(groupId, name, email, userId || null, phone);
       } else {
-        newMem = LocalDatabase.addMember({ groupId, name, email, phone });
+        newMem = LocalDatabase.addMember({ groupId, name, email, phone, userId });
       }
       await loadData();
       return newMem;
@@ -466,18 +466,20 @@ function App() {
     loadData();
   };
 
-  const handleDeleteMember = async (memberId) => {
-    setData(prev => ({
-      ...prev,
-      members: (prev.members || []).filter(m => String(m.id) !== String(memberId))
-    }));
+  const handleDeleteMember = async (memberId, groupId = null) => {
     try {
       if (isTursoConfigured) {
-        await tursoDeleteMember(memberId);
+        await tursoDeleteMember(memberId, groupId, currentUser?.id);
+      } else {
+        LocalDatabase.deleteMember(memberId);
       }
-      LocalDatabase.deleteMember(memberId);
+      setData(prev => ({
+        ...prev,
+        members: (prev.members || []).filter(m => String(m.id) !== String(memberId))
+      }));
     } catch (err) {
       console.error("Failed to delete member:", err);
+      throw err;
     }
     loadData();
   };
@@ -684,9 +686,13 @@ function App() {
           })}
         >
           <UserAvatar user={currentUser} size={40} className="avatar" />
-          <div className="user-info">
-            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>{currentUser.name}</h4>
-            <p style={{ marginTop: '2px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{currentUser.email}</p>
+          <div className="user-info" style={{ overflow: 'hidden' }}>
+            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.92rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{currentUser.name}</h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--accent-primary, #00bfa5)', fontWeight: 600, fontFamily: 'monospace' }}>
+                @{currentUser.username || currentUser.email?.split('@')[0]}
+              </span>
+            </div>
           </div>
         </NavLink>
       </aside>

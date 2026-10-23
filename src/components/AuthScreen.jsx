@@ -5,9 +5,10 @@ import './AuthScreen.css';
 
 export default function AuthScreen({ onLoginSuccess }) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -28,9 +29,9 @@ export default function AuthScreen({ onLoginSuccess }) {
 
       let user;
       if (isSignUp) {
-        user = await tursoSignUp(name, email, password);
+        user = await tursoSignUp(name, emailOrUsername, password, '', username);
       } else {
-        user = await tursoSignIn(email, password);
+        user = await tursoSignIn(emailOrUsername, password);
       }
       
       onLoginSuccess(user);
@@ -123,18 +124,34 @@ export default function AuthScreen({ onLoginSuccess }) {
                   />
                 </div>
               </div>
+
+              <div className="form-group">
+                <label>Unique Username (Optional)</label>
+                <div className="input-wrapper">
+                  <i className="ph ph-at"></i>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. roy or swapnil"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  />
+                </div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
+                  Friends can search and find you using your unique @username
+                </span>
+              </div>
             </>
           )}
 
           <div className="form-group">
-            <label>Email *</label>
+            <label>{isSignUp ? 'Email Address *' : 'Email or @Username *'}</label>
             <div className="input-wrapper">
-              <i className="ph ph-envelope-simple"></i>
+              <i className={isSignUp ? "ph ph-envelope-simple" : "ph ph-user"}></i>
               <input 
-                type="email" 
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type={isSignUp ? "email" : "text"}
+                placeholder={isSignUp ? "name@example.com" : "name@example.com or @username"}
+                value={emailOrUsername}
+                onChange={(e) => setEmailOrUsername(e.target.value)}
                 required
               />
             </div>
