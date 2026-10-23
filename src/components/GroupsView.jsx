@@ -134,6 +134,7 @@ export default function GroupsView({
         onDeleteExpense={onDeleteExpense}
         onDeleteSettlement={onDeleteSettlement}
         onSelectExpense={onSelectExpense}
+        onRefreshData={onRefreshData}
       />
     </>
   );

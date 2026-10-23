@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple } from '../lib/CurrencyManager';
-import { calculateBalances, simplifyDebts, isDebtor, isCreditor, matchesMember, getUserBalance } from '../lib/BalanceCalculator';
+import { calculateBalances, simplifyDebts, isDebtor, isCreditor, matchesMember, getUserBalance, isMemberMatch } from '../lib/BalanceCalculator';
 import { avatarColorForName } from './GroupCard';
 import { normalizeCategory } from './ExpensesView';
 import { useConfirm } from './ConfirmModal';
@@ -95,6 +95,7 @@ export default function GroupDetailsModal({
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberPhone, setEditMemberPhone] = useState('');
+  const [isUpdatingMember, setIsUpdatingMember] = useState(false);
 
   // Member search
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
@@ -283,12 +284,22 @@ export default function GroupDetailsModal({
     )
   );
 
+  const isMemberCurrentUser = (m) => {
+    if (!m || !currentUser) return false;
+    if (typeof m === 'string' || typeof m === 'number') {
+      const found = effectiveMembers.find(mem => String(mem.id) === String(m));
+      if (found) m = found;
+      else return String(m) === String(currentUser.id);
+    }
+    if (String(m.id) === String(currentUser.id)) return true;
+    if (m.userId && String(m.userId) === String(currentUser.id)) return true;
+    if (m.email && currentUser.email && m.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) return true;
+    if (m.username && currentUser.username && m.username.trim().toLowerCase() === currentUser.username.trim().toLowerCase()) return true;
+    return isMemberMatch(m.id || m, currentUser, effectiveMembers);
+  };
+
   const isCurrentUserMember = Boolean(
-    currentUser && effectiveMembers.some(m => 
-      String(m.userId) === String(currentUser.id) ||
-      String(m.id) === String(currentUser.id) ||
-      (m.email && currentUser.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
-    )
+    currentUser && effectiveMembers.some(m => isMemberCurrentUser(m))
   );
 
   const handleAddRegisteredUser = async (targetUser) => {
@@ -348,8 +359,7 @@ export default function GroupDetailsModal({
   };
 
   const handleStartEditMember = (member) => {
-    const isCur = isMemberMatch(member.id, currentUser, effectiveMembers);
-    if (!isCur) {
+    if (!isMemberCurrentUser(member)) {
       alert("Permission Denied: You can only edit your own member details.");
       return;
     }
@@ -360,28 +370,31 @@ export default function GroupDetailsModal({
   };
 
   const handleSaveEditMember = async (memberId) => {
-    const isCur = isMemberMatch(memberId, currentUser, effectiveMembers);
-    if (!isCur) {
+    const memberObj = effectiveMembers.find(m => String(m.id) === String(memberId)) || memberId;
+    if (!isMemberCurrentUser(memberObj)) {
       alert("Permission Denied: You can only edit your own member details.");
       return;
     }
     if (!editMemberName.trim()) return;
     try {
+      setIsUpdatingMember(true);
       await onUpdateMember?.(memberId, {
         name: editMemberName.trim(),
         email: editMemberEmail.trim(),
         phone: editMemberPhone.trim()
       });
       setEditingMemberId(null);
+      onRefreshData?.();
     } catch (err) {
       console.error('Failed to update member:', err);
+      alert(err.message || 'Failed to update member details.');
+    } finally {
+      setIsUpdatingMember(false);
     }
   };
 
   const handleRemoveMember = async (member, balance) => {
-    const isCurrentUser = String(member.id) === String(currentUser?.id) || 
-      (member.userId && String(member.userId) === String(currentUser?.id)) ||
-      (member.email && member.email.toLowerCase() === currentUser?.email?.toLowerCase());
+    const isCurrentUser = isMemberCurrentUser(member);
 
     // Strict requirement: Only group creator can remove other members
     if (!isCurrentUser && !isGroupCreator) {
@@ -1226,10 +1239,10 @@ export default function GroupDetailsModal({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto' }}>
                 {displayedMembers.map(member => {
                   const b = groupBalances.find(bal => String(bal.memberId) === String(member.id)) || { netBalance: 0, totalPaid: 0 };
-                  const isCurrentUser = String(member.id) === String(currentUser?.id) || (member.email && member.email === currentUser?.email);
+                  const isCurrentUser = isMemberCurrentUser(member);
                   const isCreator = String(group.createdBy) === String(member.userId || member.id);
                   const mColor = avatarColorForName(member.name);
-                  const isEditing = editingMemberId === member.id;
+                  const isEditing = String(editingMemberId) === String(member.id);
 
                   if (isEditing) {
                     return (
@@ -1247,7 +1260,7 @@ export default function GroupDetailsModal({
                       >
                         <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <i className="ph ph-pencil-simple" style={{ color: 'var(--accent-primary)' }}></i>
-                          Edit Member: {member.name}
+                          Edit Your Details: {member.name}
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
@@ -1259,7 +1272,8 @@ export default function GroupDetailsModal({
                               type="text"
                               value={editMemberName}
                               onChange={(e) => setEditMemberName(e.target.value)}
-                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                              disabled={isUpdatingMember}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box', background: 'var(--bg-tertiary)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '6px' }}
                               required
                             />
                           </div>
@@ -1271,7 +1285,8 @@ export default function GroupDetailsModal({
                               type="email"
                               value={editMemberEmail}
                               onChange={(e) => setEditMemberEmail(e.target.value)}
-                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                              disabled={isUpdatingMember}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box', background: 'var(--bg-tertiary)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '6px' }}
                             />
                           </div>
                           <div>
@@ -1282,7 +1297,8 @@ export default function GroupDetailsModal({
                               type="tel"
                               value={editMemberPhone}
                               onChange={(e) => setEditMemberPhone(e.target.value)}
-                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                              disabled={isUpdatingMember}
+                              style={{ width: '100%', padding: '6px 10px', fontSize: '0.82rem', boxSizing: 'border-box', background: 'var(--bg-tertiary)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', borderRadius: '6px' }}
                             />
                           </div>
                         </div>
@@ -1292,6 +1308,7 @@ export default function GroupDetailsModal({
                             type="button"
                             className="btn-secondary"
                             onClick={() => setEditingMemberId(null)}
+                            disabled={isUpdatingMember}
                             style={{ fontSize: '0.78rem', padding: '5px 12px' }}
                           >
                             Cancel
@@ -1300,10 +1317,10 @@ export default function GroupDetailsModal({
                             type="button"
                             className="btn-primary"
                             onClick={() => handleSaveEditMember(member.id)}
-                            disabled={!editMemberName.trim()}
+                            disabled={!editMemberName.trim() || isUpdatingMember}
                             style={{ fontSize: '0.78rem', padding: '5px 12px' }}
                           >
-                            Save Changes
+                            {isUpdatingMember ? 'Saving...' : 'Save Changes'}
                           </button>
                         </div>
                       </div>
