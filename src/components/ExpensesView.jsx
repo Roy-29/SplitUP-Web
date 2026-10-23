@@ -669,7 +669,9 @@ export default function ExpensesView({
                 const iconColor = isExpense ? "var(--warning)" : "var(--success)";
                 const iconBg = isExpense ? "rgba(253, 203, 110, 0.15)" : "rgba(0, 184, 148, 0.15)";
                 
-                const title = isExpense ? data.title : `${data.payerName} paid ${data.payeeName}`;
+                const payerName = data.payerName || 'Member';
+                const payeeName = data.payeeName || 'Member';
+                const title = isExpense ? data.title : `${payerName} paid ${payeeName}`;
                 const groupName = isExpense ? (data.groupName || "Group Expense") : "Settlement";
 
                 return (

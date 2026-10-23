@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { LocalDatabase } from './store/db'
-import { calculateBalances, simplifyDebts, getTotalGroupBalance } from './lib/BalanceCalculator'
+import { calculateBalances, simplifyDebts, getTotalGroupBalance, getUserBalance, isUserInvolved, matchesMember } from './lib/BalanceCalculator'
 import DashboardView from './components/DashboardView'
 import NewExpenseModal from './components/NewExpenseModal'
 import SettleUpModal from './components/SettleUpModal'
@@ -99,6 +99,7 @@ function App() {
   const [expenseModalTopic, setExpenseModalTopic] = useState('');
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
   const [settleModalGroupId, setSettleModalGroupId] = useState(null);
+  const [settleModalTarget, setSettleModalTarget] = useState(null);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
   const [isNewTopicModalOpen, setIsNewTopicModalOpen] = useState(false);
   const [selectedGroupForDetails, setSelectedGroupForDetails] = useState(null);
@@ -177,8 +178,9 @@ function App() {
     setIsExpenseModalOpen(true);
   };
 
-  const openSettleModal = (groupId = null) => {
+  const openSettleModal = (groupId = null, targetDebtOrMember = null) => {
     setSettleModalGroupId(groupId);
+    setSettleModalTarget(targetDebtOrMember ? { groupId, debt: targetDebtOrMember } : null);
     setIsSettleModalOpen(true);
   };
 
@@ -266,27 +268,44 @@ function App() {
       members = [];
     }
 
-    // Run the domain logic!
-    const balances = calculateBalances(members, expenses, settlements)
-    const simplifiedDebts = simplifyDebts(balances)
-    const { totalOwed, totalToReceive } = getTotalGroupBalance(balances)
+    // Run the domain logic per group to ensure strict group isolation
+    const allGroupBalances = [];
+    const allSimplifiedDebts = [];
 
-    const myBalance = balances.find(b => b.memberId === currentUser?.id) || {
-      memberId: currentUser?.id,
-      netBalance: 0,
-      totalPaid: 0,
-      totalShare: 0
-    };
+    mockGroups.forEach(g => {
+      const gMembers = members.filter(m => String(m.groupId) === String(g.id));
+      const gExpenses = expenses.filter(e => String(e.groupId) === String(g.id));
+      const gSettlements = settlements.filter(s => String(s.groupId) === String(g.id));
 
-    // Only show debts related to current user
-    const myDebts = simplifiedDebts.filter(d => 
-      d.fromMemberId === currentUser?.id || d.toMemberId === currentUser?.id
-    )
+      const gBalances = calculateBalances(gMembers, gExpenses, gSettlements, members);
+      const gDebts = simplifyDebts(gBalances, gMembers, g.id, g.name);
 
-    // Unified Activity Feed
+      allGroupBalances.push(...gBalances);
+      allSimplifiedDebts.push(...gDebts);
+    });
+
+    const { totalOwed, totalToReceive } = getTotalGroupBalance(allGroupBalances);
+    const myBalance = getUserBalance(allGroupBalances, currentUser, members);
+
+    // Filter debts involving the current user
+    const myDebts = allSimplifiedDebts.filter(d => isUserInvolved(d, currentUser, members));
+
+    // Unified Activity Feed with verified payer/payee names
     const activities = [
       ...expenses.map(e => ({ type: 'EXPENSE', date: e.date, data: e })),
-      ...settlements.map(s => ({ type: 'SETTLEMENT', date: s.date, data: s }))
+      ...settlements.map(s => {
+        const payerName = s.payerName || members.find(m => matchesMember(m, s.paidBy))?.name || 'Someone';
+        const payeeName = s.payeeName || members.find(m => matchesMember(m, s.paidTo))?.name || 'Someone';
+        return {
+          type: 'SETTLEMENT',
+          date: s.date,
+          data: {
+            ...s,
+            payerName,
+            payeeName
+          }
+        };
+      })
     ].sort((a, b) => b.date - a.date);
 
     setData({
@@ -849,11 +868,12 @@ function App() {
               activities={activities}
               groups={groups}
               expenses={expenses}
+              members={data.members}
               formatCurrency={formatCurrency}
               formatCurrencyCompact={formatCurrencyCompact}
               onNewExpenseClick={() => openExpenseModal('PERSONAL')}
               onNewGroupClick={() => setIsNewGroupModalOpen(true)}
-              onSettleUpClick={() => openSettleModal()}
+              onSettleUpClick={(gid, debt) => openSettleModal(gid, debt)}
               onSelectGroup={(grp) => setSelectedGroupForDetails(grp)}
               onSelectExpense={(item, type) => setSelectedExpenseForDetails({ ...item, ...(type ? { type } : {}) })}
             />
@@ -962,13 +982,16 @@ function App() {
         onClose={() => {
           setIsSettleModalOpen(false);
           setSettleModalGroupId(null);
+          setSettleModalTarget(null);
         }}
         onSuccess={loadData}
         currentGroupId={settleModalGroupId || currentActiveGroupId}
         currentUser={currentUser}
         suggestedDebts={myDebts}
+        groups={groups}
         currencyCode={currencyCode}
         members={data.members}
+        initialTarget={settleModalTarget}
       />
 
       {/* New Group Modal */}
@@ -987,6 +1010,7 @@ function App() {
         currentUser={currentUser}
         currencyCode={currencyCode}
         personalTopics={data.personalTopics}
+        members={data.members}
         onDeleteExpense={handleDeleteExpense}
         onDeleteSettlement={handleDeleteSettlement}
         onUpdateExpense={handleUpdateExpense}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isDebtor, isCreditor, isMemberMatch, matchesMember } from '../lib/BalanceCalculator';
 
 export default function DashboardView({
   currentUser,
@@ -8,6 +9,7 @@ export default function DashboardView({
   activities = [],
   groups = [],
   expenses = [],
+  members = [],
   formatCurrency,
   formatCurrencyCompact,
   onNewExpenseClick,
@@ -19,15 +21,15 @@ export default function DashboardView({
   const navigate = useNavigate();
 
   const totalOwedToMe = myDebts
-    .filter(d => d.toMemberId === currentUser.id)
+    .filter(d => isCreditor(d, currentUser, members))
     .reduce((sum, d) => sum + d.amount, 0);
 
   const totalIOwe = myDebts
-    .filter(d => d.fromMemberId === currentUser.id)
+    .filter(d => isDebtor(d, currentUser, members))
     .reduce((sum, d) => sum + d.amount, 0);
 
-  const pendingPaymentsCount = myDebts.filter(d => d.fromMemberId === currentUser.id).length;
-  const pendingCollectionsCount = myDebts.filter(d => d.toMemberId === currentUser.id).length;
+  const pendingPaymentsCount = myDebts.filter(d => isDebtor(d, currentUser, members)).length;
+  const pendingCollectionsCount = myDebts.filter(d => isCreditor(d, currentUser, members)).length;
 
   return (
     <>
@@ -98,8 +100,11 @@ export default function DashboardView({
               activities.slice(0, 5).map((activity, idx) => {
                 if (activity.type === 'SETTLEMENT') {
                   const s = activity.data;
-                  const iPaid = s.paidBy === currentUser.id;
-                  const iReceived = s.paidTo === currentUser.id;
+                  const iPaid = isMemberMatch(s.paidBy, currentUser, members);
+                  const iReceived = isMemberMatch(s.paidTo, currentUser, members);
+
+                  const payer = s.payerName || members.find(m => matchesMember(m, s.paidBy))?.name || 'Someone';
+                  const payee = s.payeeName || members.find(m => matchesMember(m, s.paidTo))?.name || 'Someone';
                   
                   let title = '';
                   let subtitle = '';
@@ -110,17 +115,17 @@ export default function DashboardView({
                   const methodStr = `Via ${s.paymentMethod || 'Cash'}${trxTag} • ${new Date(s.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}`;
 
                   if (iPaid) {
-                    title = `You paid ${s.payeeName}`;
+                    title = `You paid ${payee}`;
                     subtitle = methodStr;
                     amountClass = 'amount-positive';
                     relationText = 'Settled';
                   } else if (iReceived) {
-                    title = `${s.payerName} paid you`;
+                    title = `${payer} paid you`;
                     subtitle = methodStr;
                     amountClass = 'amount-negative';
                     relationText = 'Received';
                   } else {
-                    title = `${s.payerName} paid ${s.payeeName}`;
+                    title = `${payer} paid ${payee}`;
                     subtitle = methodStr;
                     relationText = 'Not involved';
                   }
@@ -305,10 +310,10 @@ export default function DashboardView({
             
             {myDebts.length > 0 ? (
               myDebts.map((debt, index) => {
-                const iOwe = debt.fromMemberId === currentUser.id;
+                const iOwe = isDebtor(debt, currentUser, members);
                 const targetName = iOwe ? debt.toMemberName : debt.fromMemberName;
-                const actionText = iOwe ? `Settle up with ${targetName}` : `Remind ${targetName}`;
-                const descText = iOwe ? `Paying ${targetName} ${formatCurrencyCompact(debt.amount)} will simplify your debts.` 
+                const actionText = iOwe ? `Settle up with ${targetName}` : `Record payment from ${targetName}`;
+                const descText = iOwe ? `Paying ${targetName} ${formatCurrencyCompact(debt.amount)} will clear your debt.` 
                                       : `${targetName} owes you ${formatCurrencyCompact(debt.amount)}.`;
                 
                 return (
@@ -316,7 +321,7 @@ export default function DashboardView({
                     key={index} 
                     className="activity-item" 
                     style={{ background: 'rgba(108, 92, 231, 0.1)', borderColor: 'rgba(108, 92, 231, 0.2)', marginBottom: '12px', cursor: 'pointer' }}
-                    onClick={onSettleUpClick}
+                    onClick={() => onSettleUpClick ? onSettleUpClick(debt.groupId, debt) : null}
                   >
                     <div className="activity-icon" style={{ background: 'transparent', color: 'var(--accent-primary)' }}>
                       <i className="ph ph-lightbulb"></i>

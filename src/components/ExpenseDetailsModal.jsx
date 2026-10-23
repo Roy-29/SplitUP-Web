@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple, getSymbol } from '../lib/CurrencyManager';
+import { matchesMember } from '../lib/BalanceCalculator';
 import { normalizeCategory } from './ExpensesView';
 import CustomSelect from './CustomSelect';
 import { isTursoConfigured, tursoAddPersonalTopic } from '../lib/turso';
@@ -70,6 +71,7 @@ export default function ExpenseDetailsModal({
   currentUser,
   currencyCode = 'BDT',
   personalTopics = [],
+  members = [],
   onDeleteExpense,
   onDeleteSettlement,
   onUpdateExpense,
@@ -124,7 +126,7 @@ export default function ExpenseDetailsModal({
 
   if (!isOpen || !expense) return null;
 
-  const isSettlement = expense.isSettlement || expense.type === 'SETTLEMENT' || (expense.paidTo !== undefined && expense.payerName !== undefined);
+  const isSettlement = Boolean(expense.isSettlement || expense.type === 'SETTLEMENT' || expense.paidTo !== undefined);
   const isPersonal = expense.isPersonal || expense.groupId === 'personal' || (!isSettlement && !expense.groupId);
   const isGroupExpense = !isSettlement && !isPersonal;
 
@@ -813,7 +815,7 @@ export default function ExpenseDetailsModal({
                     <div style={{ textAlign: 'center', flex: 1 }}>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>From (Payer)</div>
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
-                        {expense.payerName || 'Payer'}
+                        {expense.payerName || members.find(m => matchesMember(m, expense.paidBy))?.name || 'Payer'}
                       </div>
                     </div>
                     <div style={{ color: 'var(--success)', fontSize: '1.4rem', padding: '0 8px' }}>
@@ -822,7 +824,7 @@ export default function ExpenseDetailsModal({
                     <div style={{ textAlign: 'center', flex: 1 }}>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>To (Receiver)</div>
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
-                        {expense.payeeName || 'Receiver'}
+                        {expense.payeeName || members.find(m => matchesMember(m, expense.paidTo))?.name || 'Receiver'}
                       </div>
                     </div>
                   </div>

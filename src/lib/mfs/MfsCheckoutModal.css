@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 1200;
   padding: 16px;
   animation: mfsFadeIn 0.2s ease-out;
 }

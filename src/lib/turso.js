@@ -112,6 +112,15 @@ export async function initTursoTables() {
       await tursoClient.execute("ALTER TABLE settlements ADD COLUMN trxId TEXT;");
     } catch (_) {}
     try {
+      await tursoClient.execute("ALTER TABLE settlements ADD COLUMN payerName TEXT;");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("ALTER TABLE settlements ADD COLUMN payeeName TEXT;");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("ALTER TABLE settlements ADD COLUMN notes TEXT;");
+    } catch (_) {}
+    try {
       await tursoClient.execute("ALTER TABLE members ADD COLUMN phone TEXT;");
     } catch (_) {}
 
@@ -663,13 +672,16 @@ export async function tursoGetSettlements(groupId = null) {
   const res = await tursoClient.execute({ sql, args });
   return res.rows.map(row => ({
     id: String(row.id),
-    groupId: isNaN(Number(row.groupId)) ? String(row.groupId) : Number(row.groupId),
-    paidBy: isNaN(Number(row.paidBy)) ? String(row.paidBy) : Number(row.paidBy),
-    paidTo: isNaN(Number(row.paidTo)) ? String(row.paidTo) : Number(row.paidTo),
+    groupId: String(row.groupId),
+    paidBy: String(row.paidBy),
+    paidTo: String(row.paidTo),
+    payerName: row.payerName ? String(row.payerName) : null,
+    payeeName: row.payeeName ? String(row.payeeName) : null,
     amount: Number(row.amount),
     date: Number(row.date),
     paymentMethod: row.paymentMethod ? String(row.paymentMethod) : 'Cash',
-    trxId: row.trxId ? String(row.trxId) : null
+    trxId: row.trxId ? String(row.trxId) : null,
+    notes: row.notes ? String(row.notes) : null
   }));
 }
 
@@ -677,20 +689,23 @@ export async function tursoAddSettlement(settlement) {
   if (!tursoClient) throw new Error("Turso client is not initialized.");
   await initTursoTables();
 
-  const id = `stl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const id = settlement.id || `stl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   await tursoClient.execute({
-    sql: `INSERT INTO settlements (id, groupId, paidBy, paidTo, amount, date, paymentMethod, trxId)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    sql: `INSERT INTO settlements (id, groupId, paidBy, paidTo, payerName, payeeName, amount, date, paymentMethod, trxId, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     args: [
       id,
       String(settlement.groupId || '1'),
       String(settlement.paidBy),
       String(settlement.paidTo),
+      settlement.payerName || null,
+      settlement.payeeName || null,
       Number(settlement.amount),
       Number(settlement.date || Date.now()),
       settlement.paymentMethod || 'Cash',
-      settlement.trxId || null
+      settlement.trxId || null,
+      settlement.notes || null
     ]
   });
 
@@ -736,6 +751,18 @@ export async function tursoUpdateSettlement(settlementId, fields = {}) {
   if (fields.paidTo !== undefined) {
     setClauses.push('paidTo = ?');
     args.push(String(fields.paidTo));
+  }
+  if (fields.payerName !== undefined) {
+    setClauses.push('payerName = ?');
+    args.push(fields.payerName ? String(fields.payerName) : null);
+  }
+  if (fields.payeeName !== undefined) {
+    setClauses.push('payeeName = ?');
+    args.push(fields.payeeName ? String(fields.payeeName) : null);
+  }
+  if (fields.notes !== undefined) {
+    setClauses.push('notes = ?');
+    args.push(fields.notes ? String(fields.notes) : null);
   }
 
   if (setClauses.length === 0) return;

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatSimple } from '../lib/CurrencyManager';
-import { calculateBalances, simplifyDebts } from '../lib/BalanceCalculator';
+import { calculateBalances, simplifyDebts, isDebtor, isCreditor, matchesMember, getUserBalance } from '../lib/BalanceCalculator';
 import { avatarColorForName } from './GroupCard';
 import { normalizeCategory } from './ExpensesView';
 import { useConfirm } from './ConfirmModal';
@@ -126,13 +126,13 @@ export default function GroupDetailsModal({
   // Compute domain balances and simplified debts for this specific group
   const groupBalances = useMemo(() => {
     if (!group) return [];
-    return calculateBalances(effectiveMembers, groupExpenses, groupSettlements);
-  }, [group, effectiveMembers, groupExpenses, groupSettlements]);
+    return calculateBalances(effectiveMembers, groupExpenses, groupSettlements, members);
+  }, [group, effectiveMembers, groupExpenses, groupSettlements, members]);
 
   const groupDebts = useMemo(() => {
     if (!group) return [];
-    return simplifyDebts(groupBalances);
-  }, [group, groupBalances]);
+    return simplifyDebts(groupBalances, effectiveMembers, group.id, group.name);
+  }, [group, groupBalances, effectiveMembers]);
 
   if (!isOpen || !group) return null;
 
@@ -140,7 +140,7 @@ export default function GroupDetailsModal({
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
 
   // Current user's balance in this group
-  const myBalance = groupBalances.find(b => String(b.memberId) === String(currentUser?.id)) || { netBalance: 0, totalPaid: 0 };
+  const myBalance = getUserBalance(groupBalances, currentUser, effectiveMembers);
   const totalGroupSpent = groupExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   // Filter expenses by search
@@ -463,10 +463,10 @@ export default function GroupDetailsModal({
           </div>
 
           <div style={{
-            background: myBalance.netBalance > 0 
+            background: myBalance.netBalance > 0.01 
               ? 'rgba(0, 184, 148, 0.1)' 
-              : (myBalance.netBalance < 0 ? 'rgba(214, 48, 49, 0.1)' : 'var(--bg-tertiary)'),
-            border: `1px solid ${myBalance.netBalance > 0 ? 'rgba(0, 184, 148, 0.3)' : (myBalance.netBalance < 0 ? 'rgba(214, 48, 49, 0.3)' : 'var(--glass-border)')}`,
+              : (myBalance.netBalance < -0.01 ? 'rgba(214, 48, 49, 0.1)' : 'var(--bg-tertiary)'),
+            border: `1px solid ${myBalance.netBalance > 0.01 ? 'rgba(0, 184, 148, 0.3)' : (myBalance.netBalance < -0.01 ? 'rgba(214, 48, 49, 0.3)' : 'var(--glass-border)')}`,
             borderRadius: '12px',
             padding: '14px 16px'
           }}>
@@ -476,10 +476,10 @@ export default function GroupDetailsModal({
             <div style={{ 
               fontSize: '1.45rem', 
               fontWeight: 800, 
-              color: myBalance.netBalance > 0 ? 'var(--success)' : (myBalance.netBalance < 0 ? 'var(--danger)' : 'var(--text-primary)'), 
+              color: myBalance.netBalance > 0.01 ? 'var(--success)' : (myBalance.netBalance < -0.01 ? 'var(--danger)' : 'var(--text-primary)'), 
               marginTop: '2px' 
             }}>
-              {myBalance.netBalance > 0 ? `+${formatSimple(myBalance.netBalance, currencyCode)}` : (myBalance.netBalance < 0 ? `-${formatSimple(Math.abs(myBalance.netBalance), currencyCode)}` : 'Settled')}
+              {myBalance.netBalance > 0.01 ? `+${formatSimple(myBalance.netBalance, currencyCode)}` : (myBalance.netBalance < -0.01 ? `-${formatSimple(Math.abs(myBalance.netBalance), currencyCode)}` : 'Settled')}
             </div>
           </div>
 
@@ -1100,8 +1100,8 @@ export default function GroupDetailsModal({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {groupDebts.map((debt, idx) => {
-                    const iAmDebtor = String(debt.fromMemberId) === String(currentUser?.id);
-                    const iAmCreditor = String(debt.toMemberId) === String(currentUser?.id);
+                    const iAmDebtor = isDebtor(debt, currentUser, effectiveMembers);
+                    const iAmCreditor = isCreditor(debt, currentUser, effectiveMembers);
 
                     return (
                       <div
@@ -1131,14 +1131,19 @@ export default function GroupDetailsModal({
                           <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                             {formatSimple(debt.amount, currencyCode)}
                           </span>
-                          {iAmDebtor && onSettleUp && (
+                          {onSettleUp && (
                             <button
                               type="button"
                               className="btn-primary"
-                              onClick={() => onSettleUp(group.id)}
-                              style={{ padding: '4px 10px', fontSize: '0.78rem', height: '28px' }}
+                              onClick={() => onSettleUp(group.id, debt)}
+                              style={{ 
+                                padding: '4px 12px', 
+                                fontSize: '0.78rem', 
+                                height: '28px',
+                                background: iAmDebtor ? 'var(--danger)' : (iAmCreditor ? 'var(--success)' : 'var(--accent-primary)')
+                              }}
                             >
-                              Settle
+                              {iAmDebtor ? 'Settle' : (iAmCreditor ? 'Record Paid' : 'Settle')}
                             </button>
                           )}
                         </div>
@@ -1156,31 +1161,35 @@ export default function GroupDetailsModal({
                   Settlement History ({groupSettlements.length})
                 </h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {groupSettlements.map(stl => (
-                    <div
-                      key={stl.id}
-                      onClick={() => onSelectExpense?.({ ...stl, isSettlement: true })}
-                      style={{
-                        padding: '10px 14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '10px',
-                        borderRadius: '8px',
-                        background: 'var(--bg-tertiary)',
-                        border: '1px solid var(--glass-border)',
-                        cursor: 'pointer'
-                      }}
-                      title="Click to view details"
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {stl.payerName} paid {stl.payeeName}
+                  {groupSettlements.map(stl => {
+                    const payer = stl.payerName || effectiveMembers.find(m => matchesMember(m, stl.paidBy))?.name || 'Someone';
+                    const payee = stl.payeeName || effectiveMembers.find(m => matchesMember(m, stl.paidTo))?.name || 'Someone';
+
+                    return (
+                      <div
+                        key={stl.id}
+                        onClick={() => onSelectExpense?.({ ...stl, isSettlement: true })}
+                        style={{
+                          padding: '10px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                          borderRadius: '8px',
+                          background: 'var(--bg-tertiary)',
+                          border: '1px solid var(--glass-border)',
+                          cursor: 'pointer'
+                        }}
+                        title="Click to view details"
+                      >
+                        <div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {payer} paid {payee}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Via {stl.paymentMethod || 'Cash'} • {formatDate(stl.date)}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          Via {stl.paymentMethod || 'Cash'} • {formatDate(stl.date)}
-                        </div>
-                      </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontWeight: 700, color: 'var(--success)', fontSize: '0.95rem' }}>
@@ -1209,8 +1218,9 @@ export default function GroupDetailsModal({
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
               </div>
             )}
           </div>

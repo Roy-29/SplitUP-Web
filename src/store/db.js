@@ -75,8 +75,13 @@ export class LocalDatabase {
 
   static addSettlement(settlement) {
     const settlements = this.getSettlements();
-    settlements.push({ ...settlement, id: Date.now() });
+    const newSettlement = {
+      ...settlement,
+      id: settlement.id || `stl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+    };
+    settlements.unshift(newSettlement);
     localStorage.setItem('splitup_settlements', JSON.stringify(settlements));
+    return newSettlement;
   }
 
   static deleteExpense(expenseId) {
