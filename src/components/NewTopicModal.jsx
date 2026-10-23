@@ -152,6 +152,7 @@ export default function NewTopicModal({
               type="number" 
               placeholder="e.g., 10000"
               value={budget}
+              onWheel={e => e.target.blur()}
               onChange={(e) => setBudget(e.target.value)}
               min="0"
               step="any"

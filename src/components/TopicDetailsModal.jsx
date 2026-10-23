@@ -201,6 +201,7 @@ export default function TopicDetailsModal({
                 step="any"
                 min="0"
                 value={editForm.budget}
+                onWheel={e => e.target.blur()}
                 onChange={(e) => setEditForm(prev => ({ ...prev, budget: e.target.value }))}
                 placeholder="0.00 (Optional)"
               />

@@ -377,6 +377,7 @@ export default function NewExpenseModal({
                     e.preventDefault();
                   }
                 }}
+                onWheel={e => e.target.blur()}
                 onChange={e => {
                   const val = e.target.value.replace(/[+\-eE]/g, '');
                   setForm({...form, amount: val});
@@ -596,6 +597,7 @@ export default function NewExpenseModal({
                             e.preventDefault();
                           }
                         }}
+                        onWheel={e => e.target.blur()}
                         onChange={(e) => {
                           const val = e.target.value.replace(/[+\-eE]/g, '');
                           setForm({

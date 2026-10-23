@@ -23,10 +23,13 @@ export default function SettleUpModal({
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(currentGroupId || (groups[0]?.id || ''));
 
+  // Settlement Mode: 'CASH' (Default) | 'ONLINE' (Secondary)
+  const [paymentType, setPaymentType] = useState('CASH');
+
   // Form states: Payer is strictly currentUser
   const [payeeId, setPayeeId] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('bKash');
+  const [paymentMethod, setPaymentMethod] = useState('Cash'); // Cash is default
   const [trxId, setTrxId] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -82,6 +85,11 @@ export default function SettleUpModal({
     setDate(new Date().toISOString().split('T')[0]);
     setTrxId('');
     setNotes('');
+    setShowQr(false);
+
+    // Cash is always default; online is secondary
+    setPaymentType('CASH');
+    setPaymentMethod('Cash');
 
     const targetGid = initialTarget?.groupId || currentGroupId || (groups[0]?.id || '');
     setSelectedGroupId(targetGid);
@@ -209,6 +217,9 @@ export default function SettleUpModal({
 
     const settlementTimestamp = date ? new Date(date).getTime() : Date.now();
 
+    // Determine final payment method: Cash or chosen online method
+    const finalMethod = customMethod || (paymentType === 'CASH' ? 'Cash' : (paymentMethod || 'Online Transfer'));
+
     const newSettlement = {
       id: `stl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       groupId: activeGid,
@@ -218,7 +229,7 @@ export default function SettleUpModal({
       payeeName: resolvedPayeeName,
       amount: finalAmount,
       date: settlementTimestamp,
-      paymentMethod: customMethod || paymentMethod || 'Cash',
+      paymentMethod: finalMethod,
       trxId: (customTrxId !== null ? customTrxId : (trxId ? trxId.trim() : null)),
       notes: notes ? notes.trim() : null
     };
@@ -415,173 +426,7 @@ export default function SettleUpModal({
               </div>
             )}
 
-            {/* Payee MFS Info Box */}
-            {payeeMember && (
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                marginBottom: '14px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    {payeeMember.name}'s Payment Handles
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowQr(!showQr)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--accent-primary)',
-                      fontSize: '0.76rem',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <i className="ph ph-qr-code"></i>
-                    {showQr ? 'Hide QR' : 'Show QR'}
-                  </button>
-                </div>
-
-                {showQr && (
-                  <div style={{ textAlign: 'center', padding: '10px 0', background: '#ffffff', borderRadius: '8px', margin: '8px 0' }}>
-                    <QRCodeCanvas 
-                      value={`SplitUP Pay: ${payeeBkash || payeeNagad || payeeMember.name} - Amount: ${amount || 0}`}
-                      size={130}
-                      level="M"
-                    />
-                    <p style={{ margin: '6px 0 0', color: '#333333', fontSize: '0.7rem' }}>
-                      Scan via bKash / Nagad App
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {/* bKash row */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E2136E' }}></span>
-                      <strong>bKash:</strong> {payeeBkash || 'Ask member for number'}
-                    </span>
-                    {payeeBkash ? (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(payeeBkash, 'bkash')}
-                        className="btn-secondary"
-                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                      >
-                        {copiedField === 'bkash' ? '✓ Copied' : 'Copy'}
-                      </button>
-                    ) : (
-                      <a 
-                        href="tel:*247%23" 
-                        style={{ fontSize: '0.72rem', color: '#E2136E', textDecoration: 'none', fontWeight: 600 }}
-                        title="Dial bKash USSD"
-                      >
-                        Dial *247#
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Nagad row */}
-                  {payeeNagad && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F7941D' }}></span>
-                        <strong>Nagad:</strong> {payeeNagad}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(payeeNagad, 'nagad')}
-                        className="btn-secondary"
-                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                      >
-                        {copiedField === 'nagad' ? '✓ Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Rocket row */}
-                  {payeeRocket && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8C3494' }}></span>
-                        <strong>Rocket:</strong> {payeeRocket}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(payeeRocket, 'rocket')}
-                        className="btn-secondary"
-                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                      >
-                        {copiedField === 'rocket' ? '✓ Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Simulated Gateway Buttons */}
-                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMfsGatewayProvider('BKASH');
-                      setIsMfsGatewayOpen(true);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '7px 8px',
-                      background: '#E2136E',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '5px'
-                    }}
-                  >
-                    <i className="ph ph-lightning"></i>
-                    <span>bKash API</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMfsGatewayProvider('NAGAD');
-                      setIsMfsGatewayOpen(true);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '7px 8px',
-                      background: '#F7941D',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '5px'
-                    }}
-                  >
-                    <i className="ph ph-wallet"></i>
-                    <span>Nagad API</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Amount input with quick fill buttons */}
+            {/* Amount input with quick fill buttons (MOUSE SCROLL SAFE) */}
             <div className="form-group">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <label style={{ fontSize: '0.82rem' }}>Payment Amount</label>
@@ -622,6 +467,7 @@ export default function SettleUpModal({
                 )}
               </div>
 
+              {/* Amount input: onWheel blurs immediately so mouse scrolling doesn't change amount */}
               <input 
                 type="number" 
                 step="0.01"
@@ -633,6 +479,7 @@ export default function SettleUpModal({
                     e.preventDefault();
                   }
                 }}
+                onWheel={e => e.target.blur()}
                 onChange={e => {
                   const val = e.target.value.replace(/[+\-eE]/g, '');
                   setAmount(val);
@@ -642,54 +489,322 @@ export default function SettleUpModal({
               />
             </div>
 
-            {/* Payment Method & Date row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Payment Method</label>
-                <CustomSelect 
-                  value={paymentMethod}
-                  onChange={val => setPaymentMethod(val)}
-                  options={[
-                    { value: 'bKash', label: 'bKash', icon: '🌸' },
-                    { value: 'Nagad', label: 'Nagad', icon: '🟠' },
-                    { value: 'Rocket', label: 'Rocket', icon: '🟣' },
-                    { value: 'Upay', label: 'Upay', icon: '🟢' },
-                    { value: 'Cash', label: 'Cash', icon: '💵' },
-                    { value: 'Bank Transfer', label: 'Bank / CellFin', icon: '🏦' },
-                    { value: 'Other', label: 'Other', icon: '💳' }
-                  ]}
-                  placeholder="Payment Method"
-                />
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>Date</label>
-                <input 
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  required
-                />
+            {/* Settlement Mode Segmented Toggle: Cash (Default) vs Online (Secondary) */}
+            <div className="form-group" style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                Payment Method
+              </label>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr',
+                gap: '8px',
+                background: 'var(--bg-tertiary)',
+                padding: '4px',
+                borderRadius: '10px',
+                border: '1px solid var(--glass-border)'
+              }}>
+                <button
+                  type="button"
+                  className={`toggle-btn ${paymentType === 'CASH' ? 'active' : ''}`}
+                  onClick={() => {
+                    setPaymentType('CASH');
+                    setPaymentMethod('Cash');
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '0.82rem',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <i className="ph ph-money" style={{ fontSize: '1rem', color: paymentType === 'CASH' ? 'var(--success)' : 'inherit' }}></i>
+                  <span>💵 Cash (Default)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${paymentType === 'ONLINE' ? 'active' : ''}`}
+                  onClick={() => {
+                    setPaymentType('ONLINE');
+                    if (paymentMethod === 'Cash') {
+                      setPaymentMethod(payeeBkash ? 'bKash' : (payeeNagad ? 'Nagad' : 'bKash'));
+                    }
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '0.82rem',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <i className="ph ph-device-mobile" style={{ fontSize: '1rem' }}></i>
+                  <span>📱 Online / MFS</span>
+                </button>
               </div>
             </div>
 
-            {/* Transaction ID & Note */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label style={{ fontSize: '0.82rem' }}>TrxID <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
-                <input 
-                  type="text"
-                  placeholder="e.g. BL9A82XJ1"
-                  value={trxId}
-                  onChange={e => setTrxId(e.target.value)}
-                />
+            {/* DEFAULT MODE: CASH SETTLEMENT */}
+            {paymentType === 'CASH' && (
+              <div style={{
+                padding: '12px 14px',
+                background: 'rgba(0, 184, 148, 0.08)',
+                border: '1px solid rgba(0, 184, 148, 0.25)',
+                borderRadius: '12px',
+                marginBottom: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: 'rgba(0, 184, 148, 0.15)',
+                  color: 'var(--success)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.3rem',
+                  flexShrink: 0
+                }}>
+                  <i className="ph ph-hand-coins"></i>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    In-Person Cash Settlement
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Direct cash handover to <strong>{payeeMember?.name || 'recipient'}</strong>. No transaction charge or MFS gateway needed.
+                  </div>
+                </div>
               </div>
+            )}
+
+            {/* SECONDARY MODE: ONLINE / MFS */}
+            {paymentType === 'ONLINE' && (
+              <>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '0.82rem' }}>Online Channel</label>
+                  <CustomSelect 
+                    value={paymentMethod}
+                    onChange={val => setPaymentMethod(val)}
+                    options={[
+                      { value: 'bKash', label: 'bKash', icon: '🌸' },
+                      { value: 'Nagad', label: 'Nagad', icon: '🟠' },
+                      { value: 'Rocket', label: 'Rocket', icon: '🟣' },
+                      { value: 'Upay', label: 'Upay', icon: '🟢' },
+                      { value: 'Bank Transfer', label: 'Bank / CellFin', icon: '🏦' },
+                      { value: 'Other', label: 'Other Digital', icon: '💳' }
+                    ]}
+                    placeholder="Payment Method"
+                  />
+                </div>
+
+                {/* Payee MFS Info Box */}
+                {payeeMember && (
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    marginBottom: '14px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        {payeeMember.name}'s Payment Handles
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowQr(!showQr)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--accent-primary)',
+                          fontSize: '0.76rem',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <i className="ph ph-qr-code"></i>
+                        {showQr ? 'Hide QR' : 'Show QR'}
+                      </button>
+                    </div>
+
+                    {showQr && (
+                      <div style={{ textAlign: 'center', padding: '10px 0', background: '#ffffff', borderRadius: '8px', margin: '8px 0' }}>
+                        <QRCodeCanvas 
+                          value={`SplitUP Pay: ${payeeBkash || payeeNagad || payeeMember.name} - Amount: ${amount || 0}`}
+                          size={130}
+                          level="M"
+                        />
+                        <p style={{ margin: '6px 0 0', color: '#333333', fontSize: '0.7rem' }}>
+                          Scan via bKash / Nagad App
+                        </p>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {/* bKash row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E2136E' }}></span>
+                          <strong>bKash:</strong> {payeeBkash || 'Ask member for number'}
+                        </span>
+                        {payeeBkash ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(payeeBkash, 'bkash')}
+                            className="btn-secondary"
+                            style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                          >
+                            {copiedField === 'bkash' ? '✓ Copied' : 'Copy'}
+                          </button>
+                        ) : (
+                          <a 
+                            href="tel:*247%23" 
+                            style={{ fontSize: '0.72rem', color: '#E2136E', textDecoration: 'none', fontWeight: 600 }}
+                            title="Dial bKash USSD"
+                          >
+                            Dial *247#
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Nagad row */}
+                      {payeeNagad && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F7941D' }}></span>
+                            <strong>Nagad:</strong> {payeeNagad}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(payeeNagad, 'nagad')}
+                            className="btn-secondary"
+                            style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                          >
+                            {copiedField === 'nagad' ? '✓ Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Rocket row */}
+                      {payeeRocket && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8C3494' }}></span>
+                            <strong>Rocket:</strong> {payeeRocket}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(payeeRocket, 'rocket')}
+                            className="btn-secondary"
+                            style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                          >
+                            {copiedField === 'rocket' ? '✓ Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick Simulated Gateway Buttons */}
+                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMfsGatewayProvider('BKASH');
+                          setIsMfsGatewayOpen(true);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '7px 8px',
+                          background: '#E2136E',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        <i className="ph ph-lightning"></i>
+                        <span>bKash API</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMfsGatewayProvider('NAGAD');
+                          setIsMfsGatewayOpen(true);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '7px 8px',
+                          background: '#F7941D',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        <i className="ph ph-wallet"></i>
+                        <span>Nagad API</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Date row */}
+            <div className="form-group" style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '0.82rem' }}>Settlement Date</label>
+              <input 
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Transaction ID & Note */}
+            <div style={{ display: 'grid', gridTemplateColumns: paymentType === 'ONLINE' ? '1fr 1fr' : '1fr', gap: '10px' }}>
+              {paymentType === 'ONLINE' && (
+                <div className="form-group">
+                  <label style={{ fontSize: '0.82rem' }}>TrxID <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. BL9A82XJ1"
+                    value={trxId}
+                    onChange={e => setTrxId(e.target.value)}
+                  />
+                </div>
+              )}
 
               <div className="form-group">
                 <label style={{ fontSize: '0.82rem' }}>Note <span style={{ color: 'var(--text-muted)' }}>(Optional)</span></label>
                 <input 
                   type="text"
-                  placeholder="e.g. Lunch split"
+                  placeholder={paymentType === 'CASH' ? 'e.g. Cash handed over in person' : 'e.g. Lunch split'}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                 />
@@ -714,7 +829,9 @@ export default function SettleUpModal({
                 {isSubmitting ? (
                   'Recording...'
                 ) : (
-                  `Pay & Settle ${amount ? formatSimple(Number(amount), currencyCode) : ''}`
+                  paymentType === 'CASH'
+                    ? `Settle via Cash ${amount ? formatSimple(Number(amount), currencyCode) : ''}`
+                    : `Pay & Settle via ${paymentMethod} ${amount ? formatSimple(Number(amount), currencyCode) : ''}`
                 )}
               </button>
             </div>

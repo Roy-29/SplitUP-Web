@@ -410,6 +410,7 @@ export default function ExpenseDetailsModal({
                   step="any"
                   min="0"
                   value={editForm.amount}
+                  onWheel={e => e.target.blur()}
                   onChange={(e) => setEditForm(prev => ({ ...prev, amount: e.target.value }))}
                   placeholder="0.00"
                   required

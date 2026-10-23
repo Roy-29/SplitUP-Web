@@ -8,6 +8,15 @@ import App from './App.jsx'
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
+// Prevent mouse wheel from unintentionally incrementing or decrementing number inputs anywhere in the app
+if (typeof window !== 'undefined') {
+  window.addEventListener('wheel', () => {
+    if (document.activeElement && document.activeElement.type === 'number') {
+      document.activeElement.blur();
+    }
+  }, { passive: true });
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ConfirmProvider>
