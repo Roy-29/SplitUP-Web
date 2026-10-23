@@ -49,42 +49,42 @@
 }
 
 [data-theme='light'] {
-  /* Light Mode - Ultra Clean, Crisp & Eye-Soothing Paper-Slate Aesthetic */
-  --bg-primary: #f1f5f9;       /* Slate 100 soft background */
-  --bg-secondary: #ffffff;     /* Pure white for sidebar & header */
-  --bg-tertiary: #f8fafc;      /* Pure slate-50 */
-  --bg-hover: #e2e8f0;         /* Slate 200 hover */
+  /* Light Mode - Ultra Clean, Crisp & Eye-Soothing Slate-Paper Aesthetic */
+  --bg-primary: #f8fafc;       /* Slate 50: clean, airy, elegant canvas */
+  --bg-secondary: #ffffff;     /* Pure white for cards, modals, sidebar & header */
+  --bg-tertiary: #f1f5f9;      /* Slate 100: pill controls, input backgrounds, tags */
+  --bg-hover: #e2e8f0;         /* Slate 200: clean hover state */
   
   --bg-item: #ffffff;          /* Pure white card backgrounds */
-  --bg-item-hover: #f8fafc;    /* Clean hover */
+  --bg-item-hover: #f1f5f9;    /* Clean hover */
 
-  --stat-balance-bg: linear-gradient(145deg, rgba(99, 102, 241, 0.08) 0%, #ffffff 100%);
-  --stat-balance-border: rgba(99, 102, 241, 0.22);
-  --stat-owed-bg: linear-gradient(145deg, rgba(16, 185, 129, 0.08) 0%, #ffffff 100%);
-  --stat-owed-border: rgba(16, 185, 129, 0.22);
+  --stat-balance-bg: linear-gradient(145deg, rgba(99, 102, 241, 0.07) 0%, #ffffff 100%);
+  --stat-balance-border: rgba(99, 102, 241, 0.2);
+  --stat-owed-bg: linear-gradient(145deg, rgba(16, 185, 129, 0.07) 0%, #ffffff 100%);
+  --stat-owed-border: rgba(16, 185, 129, 0.2);
   --stat-owe-bg: linear-gradient(145deg, rgba(244, 63, 94, 0.06) 0%, #ffffff 100%);
-  --stat-owe-border: rgba(244, 63, 94, 0.2);
+  --stat-owe-border: rgba(244, 63, 94, 0.18);
 
-  --accent-primary: #4f46e5;   /* Indigo 600 */
-  --accent-secondary: #6366f1; /* Indigo 500 */
-  --accent-glow: rgba(79, 70, 229, 0.15);
+  --accent-primary: #6366f1;   /* Consistent SplitUP Modern Indigo */
+  --accent-secondary: #4f46e5; /* Deep Indigo 600 */
+  --accent-glow: rgba(99, 102, 241, 0.22);
   
   --text-primary: #0f172a;     /* Slate 900: Crisp dark */
   --text-secondary: #475569;   /* Slate 600 */
   --text-muted: #64748b;       /* Slate 500 */
   
-  --success: #059669;          /* Emerald 600 */
-  --danger: #e11d48;           /* Rose 600 */
-  --warning: #d97706;          /* Amber 600 */
+  --success: #10b981;          /* Emerald 500 */
+  --danger: #f43f5e;           /* Rose 500 */
+  --warning: #f59e0b;          /* Amber 500 */
 
   /* Glassmorphism Light */
   --glass-bg: #ffffff;
   --glass-border: rgba(15, 23, 42, 0.08);
   --glass-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
 
-  --body-glow-1: rgba(99, 102, 241, 0.05);
-  --body-glow-2: rgba(16, 185, 129, 0.04);
-  --body-glow-3: rgba(241, 245, 249, 0.4);
+  --body-glow-1: rgba(99, 102, 241, 0.04);
+  --body-glow-2: rgba(16, 185, 129, 0.03);
+  --body-glow-3: transparent;
 }
 
 * {

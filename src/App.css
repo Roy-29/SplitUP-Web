@@ -255,7 +255,7 @@
 
 .header-user-btn:hover {
   background: var(--bg-tertiary);
-  border-color: #00bfa5;
+  border-color: var(--accent-primary);
 }
 
 .header-avatar-circle {
@@ -263,8 +263,8 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(0, 191, 165, 0.2);
-  color: #00bfa5;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -287,7 +287,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00bfa5;
+  background: var(--success);
   border: 2px solid var(--bg-secondary);
 }
 
@@ -852,11 +852,11 @@
   .nav-item.active {
     background: transparent;
     border-left: none;
-    color: #00bfa5;
+    color: var(--accent-primary);
   }
 
   .nav-item.active i {
-    color: #00bfa5;
+    color: var(--accent-primary);
   }
 
   /* Compact Dashboard Stat Cards on Mobile */

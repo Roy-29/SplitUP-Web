@@ -151,21 +151,19 @@ export default function ExpensesView({
       </div>
 
       {/* Main Mode Toggle */}
-      <div className="toggle-group" style={{ maxWidth: '440px', margin: '0' }}>
+      <div className="expenses-mode-toggle">
         <button 
           type="button" 
-          className={`toggle-btn ${activeTab === 'PERSONAL' ? 'active' : ''}`}
+          className={`mode-toggle-btn ${activeTab === 'PERSONAL' ? 'active' : ''}`}
           onClick={() => setActiveTab('PERSONAL')}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px' }}
         >
           <i className="ph ph-user"></i>
           <span>Personal Expenses ({personalExpenses.length})</span>
         </button>
         <button 
           type="button" 
-          className={`toggle-btn ${activeTab === 'GROUP' ? 'active' : ''}`}
+          className={`mode-toggle-btn ${activeTab === 'GROUP' ? 'active' : ''}`}
           onClick={() => setActiveTab('GROUP')}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px' }}
         >
           <i className="ph ph-users-three"></i>
           <span>Group Expenses ({activities.length})</span>
@@ -176,69 +174,33 @@ export default function ExpensesView({
       {activeTab === 'PERSONAL' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Summary Stat Card */}
-          <div style={{ 
-            background: 'linear-gradient(135deg, rgba(108, 92, 231, 0.15) 0%, rgba(0, 184, 148, 0.1) 100%)', 
-            border: '1px solid rgba(108, 92, 231, 0.25)',
-            borderRadius: '16px',
-            padding: '20px 24px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '16px'
-          }}>
+          <div className="personal-summary-card">
             <div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span className="summary-title">
                 Total Personal Spending
               </span>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
+              <div className="summary-amount">
                 {formatSimple(totalPersonalSpent, currencyCode)}
               </div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <span className="summary-subtitle">
                 Across {personalTopics.length} subjects • {Object.keys(categoryStats).length} categories • {personalExpenses.length} records
               </span>
             </div>
 
             {/* Sub-view switcher: By Subjects / Topics vs All Expenses List */}
-            <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '10px' }}>
+            <div className="subview-switcher">
               <button
                 type="button"
+                className={`subview-btn ${personalViewMode === 'TOPICS' ? 'active' : ''}`}
                 onClick={() => setPersonalViewMode('TOPICS')}
-                style={{
-                  background: personalViewMode === 'TOPICS' ? 'var(--accent-primary)' : 'transparent',
-                  color: personalViewMode === 'TOPICS' ? '#fff' : 'var(--text-secondary)',
-                  border: 'none',
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease'
-                }}
               >
                 <i className="ph ph-folder-simple"></i>
                 By Subjects ({personalTopics.length})
               </button>
               <button
                 type="button"
+                className={`subview-btn ${personalViewMode === 'ALL' ? 'active' : ''}`}
                 onClick={() => setPersonalViewMode('ALL')}
-                style={{
-                  background: personalViewMode === 'ALL' ? 'var(--accent-primary)' : 'transparent',
-                  color: personalViewMode === 'ALL' ? '#fff' : 'var(--text-secondary)',
-                  border: 'none',
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease'
-                }}
               >
                 <i className="ph ph-list-dashes"></i>
                 All Expenses ({personalExpenses.length})
@@ -272,13 +234,9 @@ export default function ExpensesView({
               </div>
 
               {personalTopics.length > 0 || untaggedExpenses.length > 0 ? (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                  gap: '14px'
-                }}>
+                <div className="topic-cards-grid">
                   {topicStats.map(topic => {
-                    const topicColor = topic.color || '#6c5ce7';
+                    const topicColor = topic.color || 'var(--accent-primary)';
                     const topicIcon = topic.icon || 'ph-folder-simple';
                     const hasBudget = topic.budget > 0;
                     const percent = hasBudget ? Math.min(Math.round((topic.totalSpent / topic.budget) * 100), 100) : 0;
@@ -288,37 +246,19 @@ export default function ExpensesView({
                       <div
                         key={topic.id}
                         onClick={() => onSelectTopic?.(topic)}
-                        className="glass-panel hover-card"
-                        style={{
-                          padding: '18px',
-                          borderRadius: '14px',
-                          background: 'var(--bg-tertiary)',
-                          border: '1px solid var(--glass-border)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '12px',
-                          position: 'relative'
-                        }}
+                        className="topic-card-item hover-card"
                         title={`Click to open "${topic.name}" details`}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div style={{
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '12px',
+                        <div className="topic-card-header">
+                          <div className="topic-icon-box" style={{
                             background: `${topicColor}20`,
-                            color: topicColor,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.35rem'
+                            color: topicColor
                           }}>
                             <i className={`ph ${topicIcon}`}></i>
                           </div>
 
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '6px' }}>
+                            <span className="topic-item-badge">
                               {topic.itemCount} item{topic.itemCount === 1 ? '' : 's'}
                             </span>
                             <button
@@ -328,8 +268,8 @@ export default function ExpensesView({
                                 onNewExpenseClick?.('PERSONAL', null, topic.name);
                               }}
                               style={{
-                                background: `${topicColor}25`,
-                                border: `1px solid ${topicColor}50`,
+                                background: `${topicColor}20`,
+                                border: `1px solid ${topicColor}40`,
                                 color: topicColor,
                                 width: '28px',
                                 height: '28px',
@@ -348,31 +288,30 @@ export default function ExpensesView({
                         </div>
 
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
+                          <div className="topic-card-title">
                             {topic.name}
                           </div>
                           {topic.description && (
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div className="topic-card-desc">
                               {topic.description}
                             </div>
                           )}
-                          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: topicColor, marginTop: '6px' }}>
+                          <div className="topic-card-amount" style={{ color: topicColor }}>
                             {formatSimple(topic.totalSpent, currencyCode)}
                           </div>
                         </div>
 
                         {/* Budget Bar if budget set */}
                         {hasBudget && (
-                          <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '4px' }}>
+                          <div className="topic-budget-divider">
+                            <div className="topic-budget-meta">
                               <span style={{ color: 'var(--text-muted)' }}>Budget: {formatSimple(topic.budget, currencyCode)}</span>
                               <span style={{ fontWeight: 600, color: isOver ? 'var(--danger)' : 'var(--text-secondary)' }}>
                                 {isOver ? 'Over budget' : `${percent}%`}
                               </span>
                             </div>
-                            <div style={{ height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{
-                                height: '100%',
+                            <div className="topic-budget-track">
+                              <div className="topic-budget-fill" style={{
                                 width: `${percent}%`,
                                 background: isOver ? 'var(--danger)' : (percent > 80 ? 'var(--warning)' : topicColor)
                               }} />
@@ -386,47 +325,30 @@ export default function ExpensesView({
                   {/* General / Untagged Expenses Card */}
                   {untaggedExpenses.length > 0 && (
                     <div
-                      onClick={() => onSelectTopic?.({ name: 'General / Untagged', isUntagged: true, color: '#a29bfe', icon: 'ph-tag' })}
-                      className="glass-panel hover-card"
-                      style={{
-                        padding: '18px',
-                        borderRadius: '14px',
-                        background: 'var(--bg-tertiary)',
-                        border: '1px dashed var(--glass-border)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px'
-                      }}
+                      onClick={() => onSelectTopic?.({ name: 'General / Untagged', isUntagged: true, color: 'var(--accent-primary)', icon: 'ph-receipt' })}
+                      className="topic-card-item hover-card"
                       title="Click to view untagged expenses"
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{
-                          width: '44px',
-                          height: '44px',
-                          borderRadius: '12px',
-                          background: 'rgba(162, 155, 254, 0.15)',
-                          color: '#a29bfe',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '1.35rem'
+                      <div className="topic-card-header">
+                        <div className="topic-icon-box" style={{
+                          background: 'rgba(99, 102, 241, 0.15)',
+                          color: 'var(--accent-primary)'
                         }}>
                           <i className="ph ph-receipt"></i>
                         </div>
-                        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '6px' }}>
+                        <span className="topic-item-badge">
                           {untaggedExpenses.length} item{untaggedExpenses.length === 1 ? '' : 's'}
                         </span>
                       </div>
 
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                        <div className="topic-card-title">
                           General / Untagged
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        <div className="topic-card-desc">
                           Daily personal purchases without a subject
                         </div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a29bfe', marginTop: '6px' }}>
+                        <div className="topic-card-amount" style={{ color: 'var(--accent-primary)' }}>
                           {formatSimple(untaggedTotal, currencyCode)}
                         </div>
                       </div>
