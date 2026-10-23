@@ -8,7 +8,6 @@ import { useConfirm } from './ConfirmModal';
 import { 
   isTursoConfigured, 
   tursoSearchUsers, 
-  tursoGetSuggestedUsers,
   tursoGetGroupPendingRequests,
   tursoApproveJoinRequest,
   tursoDeclineJoinRequest,
@@ -172,29 +171,8 @@ export default function GroupDetailsModal({
   // Registered user search for adding members
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState([]);
-  const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const userSearchTimeoutRef = useRef(null);
-
-  // Load suggested users when adding member
-  useEffect(() => {
-    if (!isOpen || !group || !isAddingMember) return;
-    const loadSuggestions = async () => {
-      try {
-        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
-        if (isTursoConfigured) {
-          const suggestions = await tursoGetSuggestedUsers(existingIds, 6);
-          setSuggestedUsers(suggestions);
-        } else {
-          const suggestions = LocalDatabase.searchUsers('', existingIds);
-          setSuggestedUsers(suggestions);
-        }
-      } catch (err) {
-        console.warn("Failed to load suggested users:", err);
-      }
-    };
-    loadSuggestions();
-  }, [isOpen, group?.id, isAddingMember, effectiveMembers]);
 
   // Debounced search for registered users
   useEffect(() => {
@@ -909,6 +887,19 @@ export default function GroupDetailsModal({
                   </button>
                 )}
 
+                {onShowQr && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => onShowQr(group)}
+                    style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                    title="Show group QR code"
+                  >
+                    <i className="ph ph-qr-code"></i>
+                    <span>QR Code</span>
+                  </button>
+                )}
+
                 {onAddMember && (
                   <button
                     type="button"
@@ -1001,17 +992,9 @@ export default function GroupDetailsModal({
                   )}
                 </div>
 
-                {/* Search Results / Suggestions list */}
+                {/* Search Results list (only when typing) */}
                 <div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {userSearchQuery.trim() ? `Search Results (${userSearchResults.length})` : 'Suggested Registered Users'}
-                  </div>
-
-                  {isSearchingUsers ? (
-                    <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      <i className="ph ph-spinner ph-spin" style={{ marginRight: '6px' }}></i> Searching registered accounts...
-                    </div>
-                  ) : (userSearchQuery.trim() ? userSearchResults : suggestedUsers).length === 0 ? (
+                  {!userSearchQuery.trim() ? (
                     <div style={{
                       padding: '16px',
                       textAlign: 'center',
@@ -1021,63 +1004,82 @@ export default function GroupDetailsModal({
                       color: 'var(--text-muted)',
                       fontSize: '0.82rem'
                     }}>
-                      {userSearchQuery.trim() ? (
-                        <>
+                      <i className="ph ph-magnifying-glass" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '6px', opacity: 0.6 }}></i>
+                      <span>Search by username (@username), email, or name to find and invite registered users.</span>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Search Results ({userSearchResults.length})
+                      </div>
+
+                      {isSearchingUsers ? (
+                        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                          <i className="ph ph-spinner ph-spin" style={{ marginRight: '6px' }}></i> Searching registered accounts...
+                        </div>
+                      ) : userSearchResults.length === 0 ? (
+                        <div style={{
+                          padding: '16px',
+                          textAlign: 'center',
+                          background: 'var(--bg-tertiary)',
+                          borderRadius: '8px',
+                          border: '1px dashed var(--glass-border)',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.82rem'
+                        }}>
                           <i className="ph ph-user-circle-dashed" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '4px', opacity: 0.6 }}></i>
                           <span>No registered user found for "<strong>{userSearchQuery}</strong>".</span>
                           <div style={{ fontSize: '0.75rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
                             Every member must have a registered SplitUP account.
                           </div>
-                        </>
-                      ) : (
-                        <span>All your registered contacts are already in this group.</span>
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                      {(userSearchQuery.trim() ? userSearchResults : suggestedUsers).map(u => (
-                        <div
-                          key={u.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '8px 12px',
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: '8px',
-                            border: '1px solid var(--glass-border)',
-                            transition: 'border-color 0.15s ease'
-                          }}
-                          className="hover-card"
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                            <UserAvatar user={u} size={32} fontSize="0.75rem" />
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{u.name}</span>
-                                {u.username && (
-                                  <span style={{ fontSize: '0.74rem', color: 'var(--accent-secondary)' }}>
-                                    @{u.username}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {u.email}
-                              </div>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            disabled={isSubmittingMember}
-                            onClick={() => handleAddRegisteredUser(u)}
-                            style={{ fontSize: '0.76rem', padding: '5px 12px', borderRadius: '6px' }}
-                          >
-                            <i className="ph ph-paper-plane-tilt"></i> Send Invite
-                          </button>
                         </div>
-                      ))}
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                          {userSearchResults.map(u => (
+                            <div
+                              key={u.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                background: 'var(--bg-tertiary)',
+                                borderRadius: '8px',
+                                border: '1px solid var(--glass-border)',
+                                transition: 'border-color 0.15s ease'
+                              }}
+                              className="hover-card"
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                <UserAvatar user={u} size={32} fontSize="0.75rem" />
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{u.name}</span>
+                                    {u.username && (
+                                      <span style={{ fontSize: '0.74rem', color: 'var(--accent-secondary)' }}>
+                                        @{u.username}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {u.email}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                disabled={isSubmittingMember}
+                                onClick={() => handleAddRegisteredUser(u)}
+                                style={{ fontSize: '0.76rem', padding: '5px 12px', borderRadius: '6px' }}
+                              >
+                                <i className="ph ph-paper-plane-tilt"></i> Send Invite
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1100,17 +1102,31 @@ export default function GroupDetailsModal({
                     <i className="ph ph-link" style={{ color: 'var(--accent-primary)', fontSize: '0.95rem' }}></i>
                     <span>Invite code: <strong style={{ color: 'var(--text-primary)', letterSpacing: '1px' }}>{group.joinCode}</strong></span>
                   </div>
-                  {group.joinCode && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleCopyCode}
-                      style={{ fontSize: '0.72rem', padding: '3px 8px' }}
-                    >
-                      <i className={`ph ${copiedCode ? 'ph-check' : 'ph-copy'}`}></i>
-                      <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {group.joinCode && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={handleCopyCode}
+                        style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                      >
+                        <i className={`ph ${copiedCode ? 'ph-check' : 'ph-copy'}`}></i>
+                        <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                      </button>
+                    )}
+                    {onShowQr && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => onShowQr(group)}
+                        style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="Show group QR code"
+                      >
+                        <i className="ph ph-qr-code"></i>
+                        <span>QR</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

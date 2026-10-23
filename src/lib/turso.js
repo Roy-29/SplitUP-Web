@@ -223,7 +223,48 @@ export async function initTursoTables() {
   }
 }
 
-// ----------------- Auth Operations -----------------
+// ----------------- Auth Operations & Username Helpers -----------------
+
+/**
+ * Generate a guaranteed unique, lowercase alphanumeric username.
+ * @param {string} baseSeed - base string (email prefix, name, etc.)
+ * @param {string|null} excludeUserId - optional user id to exclude from collision check
+ * @returns {Promise<string>}
+ */
+export async function generateUniqueUsername(baseSeed, excludeUserId = null) {
+  let base = (baseSeed || 'user')
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9_]/g, '');
+  if (!base || base.length < 3) base = `user_${Math.random().toString(36).substring(2, 6)}`;
+  if (base.length > 22) base = base.substring(0, 22);
+
+  if (!tursoClient) {
+    let candidate = base;
+    let attempts = 0;
+    while (attempts < 20) {
+      if (!LocalDatabase.isUsernameTaken(candidate, excludeUserId)) return candidate;
+      candidate = `${base}_${Math.random().toString(36).substring(2, 6)}`;
+      attempts++;
+    }
+    return `user_${Date.now()}`;
+  }
+
+  let candidate = base;
+  let attempts = 0;
+  while (attempts < 25) {
+    const check = await tursoClient.execute({
+      sql: excludeUserId 
+        ? 'SELECT id FROM users WHERE LOWER(username) = ? AND id != ? LIMIT 1;' 
+        : 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
+      args: excludeUserId ? [candidate, String(excludeUserId)] : [candidate]
+    });
+    if (check.rows.length === 0) return candidate;
+    candidate = `${base}_${Math.random().toString(36).substring(2, 6)}`;
+    attempts++;
+  }
+  return `user_${Date.now()}`;
+}
 
 export async function tursoSignUp(name, email, password, shortProfile = '', username = '') {
   if (!tursoClient) {
@@ -244,19 +285,10 @@ export async function tursoSignUp(name, email, password, shortProfile = '', user
     throw new Error("A user with this email address already exists.");
   }
 
-  // Derive and validate unique username
-  let cleanUsername = (username || normalizedEmail.split('@')[0] || name)
-    .trim()
-    .toLowerCase()
-    .replace(/^@/, '')
-    .replace(/[^a-z0-9_]/g, '');
+  // Derive and validate unique username (manually chosen or auto-generated)
+  let cleanUsername = (username || '').trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '');
 
-  if (!cleanUsername || cleanUsername.length < 3) {
-    cleanUsername = `user_${Math.random().toString(36).substring(2, 7)}`;
-  }
-
-  // If user explicitly provided a username, validate format strictly
-  if (username) {
+  if (username && cleanUsername) {
     if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
       throw new Error("Username must be 3-30 characters containing only letters, numbers, and underscores.");
     }
@@ -270,17 +302,8 @@ export async function tursoSignUp(name, email, password, shortProfile = '', user
       throw new Error(`The username @${cleanUsername} is already taken. Please choose another.`);
     }
   } else {
-    // If auto-generated from email/name, ensure absolute uniqueness
-    let attempts = 0;
-    while (attempts < 15) {
-      const existingUsername = await tursoClient.execute({
-        sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
-        args: [cleanUsername]
-      });
-      if (existingUsername.rows.length === 0) break;
-      cleanUsername = `${(username || normalizedEmail.split('@')[0]).replace(/[^a-z0-9_]/g, '')}_${Math.random().toString(36).substring(2, 6)}`;
-      attempts++;
-    }
+    // Auto-generate guaranteed unique username if not provided manually
+    cleanUsername = await generateUniqueUsername(normalizedEmail.split('@')[0] || name);
   }
 
   const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -333,11 +356,22 @@ export async function tursoSignIn(emailOrUsername, password) {
     throw new Error("Invalid username/email or password.");
   }
 
+  let username = userRow.username ? String(userRow.username).replace(/^@/, '') : '';
+  if (!username) {
+    username = await generateUniqueUsername(String(userRow.email).split('@')[0] || String(userRow.name), userRow.id);
+    try {
+      await tursoClient.execute({
+        sql: 'UPDATE users SET username = ? WHERE id = ?;',
+        args: [username, String(userRow.id)]
+      });
+    } catch (_) {}
+  }
+
   const user = {
     id: String(userRow.id),
     name: String(userRow.name),
     email: String(userRow.email),
-    username: userRow.username ? String(userRow.username).replace(/^@/, '') : String(userRow.email).split('@')[0],
+    username,
     shortProfile: userRow.shortProfile ? String(userRow.shortProfile) : '',
     avatar: userRow.avatar ? String(userRow.avatar) : '',
     bkashNumber: userRow.bkashNumber ? String(userRow.bkashNumber) : '',
@@ -1869,8 +1903,9 @@ export async function tursoGoogleSignIn(credentialToken) {
   let user;
   if (existing.rows.length > 0) {
     const row = existing.rows[0];
-    let username = row.username ? String(row.username).replace(/^@/, '') : email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (!row.username) {
+    let username = row.username ? String(row.username).replace(/^@/, '') : '';
+    if (!username) {
+      username = await generateUniqueUsername(email.split('@')[0], row.id);
       try {
         await tursoClient.execute({
           sql: 'UPDATE users SET username = ? WHERE email = ?;',
@@ -1899,23 +1934,10 @@ export async function tursoGoogleSignIn(credentialToken) {
       primaryMfs: row.primaryMfs ? String(row.primaryMfs) : 'BKASH'
     };
   } else {
-    // New Google user! Register in users
+    // New Google user! Register in users with guaranteed unique username
     const userId = `usr_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = Date.now();
-    let cleanUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (!cleanUsername || cleanUsername.length < 3) cleanUsername = `user_${Math.random().toString(36).substring(2, 6)}`;
-
-    // Check username uniqueness in a loop to ensure 100% collision-free username
-    let attempts = 0;
-    while (attempts < 15) {
-      const taken = await tursoClient.execute({
-        sql: 'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1;',
-        args: [cleanUsername]
-      });
-      if (taken.rows.length === 0) break;
-      cleanUsername = `${email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '')}_${Math.random().toString(36).substring(2, 6)}`;
-      attempts++;
-    }
+    let cleanUsername = await generateUniqueUsername(email.split('@')[0]);
 
     try {
       await tursoClient.execute({
@@ -1924,7 +1946,7 @@ export async function tursoGoogleSignIn(credentialToken) {
       });
     } catch (insertErr) {
       if (insertErr.message?.includes('UNIQUE constraint failed') || insertErr.message?.includes('idx_users_username_unique')) {
-        cleanUsername = `user_${Math.random().toString(36).substring(2, 8)}`;
+        cleanUsername = await generateUniqueUsername(`user_${Date.now()}`);
         await tursoClient.execute({
           sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, avatar, createdAt, primaryMfs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
           args: [userId, name, email, `google_oauth_${googleId}`, 'Google Account', cleanUsername, avatar, now, 'BKASH']
@@ -2066,12 +2088,22 @@ export async function tursoSyncCurrentUser(userId, email) {
     if (result && result.rows.length > 0) {
       const row = result.rows[0];
       const current = tursoGetCurrentUser() || {};
+      let username = row.username ? String(row.username).replace(/^@/, '') : '';
+      if (!username) {
+        username = await generateUniqueUsername(row.email ? String(row.email).split('@')[0] : String(row.name), row.id);
+        try {
+          await tursoClient.execute({
+            sql: 'UPDATE users SET username = ? WHERE id = ?;',
+            args: [username, String(row.id)]
+          });
+        } catch (_) {}
+      }
       const updated = {
         ...current,
         id: String(row.id),
         name: String(row.name),
         email: String(row.email),
-        username: row.username ? String(row.username).replace(/^@/, '') : String(row.email).split('@')[0],
+        username,
         shortProfile: row.shortProfile ? String(row.shortProfile) : '',
         avatar: row.avatar ? String(row.avatar) : (current.avatar || ''),
         bkashNumber: row.bkashNumber ? String(row.bkashNumber) : '',

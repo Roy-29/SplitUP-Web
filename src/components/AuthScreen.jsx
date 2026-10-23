@@ -203,7 +203,7 @@ export default function AuthScreen({ onLoginSuccess }) {
                   />
                 </div>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
-                  Friends can search and find you using your unique @username
+                  Choose a custom username or leave blank to automatically generate one
                 </span>
               </div>
             </>
