@@ -53,26 +53,42 @@ export default function GroupDetailsModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Filter members, expenses, and settlements for this specific group
+  const groupMembers = useMemo(() => {
+    if (!group) return [];
+    return (members || []).filter(m => String(m.groupId) === String(group.id));
+  }, [members, group?.id]);
+
+  const effectiveMembers = useMemo(() => {
+    if (groupMembers.length > 0) return groupMembers;
+    return currentUser ? [{ id: currentUser.id, name: currentUser.name, email: currentUser.email }] : [];
+  }, [groupMembers, currentUser]);
+
+  const groupExpenses = useMemo(() => {
+    if (!group) return [];
+    return (expenses || []).filter(e => String(e.groupId) === String(group.id));
+  }, [expenses, group?.id]);
+
+  const groupSettlements = useMemo(() => {
+    if (!group) return [];
+    return (settlements || []).filter(s => String(s.groupId) === String(group.id));
+  }, [settlements, group?.id]);
+
+  // Compute domain balances and simplified debts for this specific group
+  const groupBalances = useMemo(() => {
+    if (!group) return [];
+    return calculateBalances(effectiveMembers, groupExpenses, groupSettlements);
+  }, [group, effectiveMembers, groupExpenses, groupSettlements]);
+
+  const groupDebts = useMemo(() => {
+    if (!group) return [];
+    return simplifyDebts(groupBalances);
+  }, [group, groupBalances]);
+
   if (!isOpen || !group) return null;
 
   const avatarColor = avatarColorForName(group.name);
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
-
-  // Filter members, expenses, and settlements for this specific group
-  const groupMembers = members.filter(m => String(m.groupId) === String(group.id));
-  const effectiveMembers = groupMembers.length > 0 ? groupMembers : (currentUser ? [{ id: currentUser.id, name: currentUser.name, email: currentUser.email }] : []);
-
-  const groupExpenses = expenses.filter(e => String(e.groupId) === String(group.id));
-  const groupSettlements = settlements.filter(s => String(s.groupId) === String(group.id));
-
-  // Compute domain balances and simplified debts for this specific group
-  const groupBalances = useMemo(() => {
-    return calculateBalances(effectiveMembers, groupExpenses, groupSettlements);
-  }, [effectiveMembers, groupExpenses, groupSettlements]);
-
-  const groupDebts = useMemo(() => {
-    return simplifyDebts(groupBalances);
-  }, [groupBalances]);
 
   // Current user's balance in this group
   const myBalance = groupBalances.find(b => String(b.memberId) === String(currentUser?.id)) || { netBalance: 0, totalPaid: 0 };

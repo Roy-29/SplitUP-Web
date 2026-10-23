@@ -113,31 +113,45 @@ export function calculateBalances(members, expenses, settlements = []) {
     });
 
     // Process expenses
-    expenses.forEach(exp => {
-        // Payer
-        if (balanceMap.has(exp.paidBy)) {
-            const payerBal = balanceMap.get(exp.paidBy);
-            payerBal.totalPaid += exp.amount;
+    (expenses || []).forEach(exp => {
+        if (!exp) return;
+        const payerKey = Array.from(balanceMap.keys()).find(k => String(k) === String(exp.paidBy));
+        if (payerKey) {
+            const payerBal = balanceMap.get(payerKey);
+            payerBal.totalPaid += (Number(exp.amount) || 0);
         }
 
         // Participants (Split)
-        exp.participants.forEach(p => {
-            if (balanceMap.has(p.memberId)) {
-                const participantBal = balanceMap.get(p.memberId);
-                participantBal.totalOwed += p.shareAmount;
+        let parts = [];
+        if (Array.isArray(exp.participants)) {
+            parts = exp.participants;
+        } else if (typeof exp.participants === 'string') {
+            try {
+                parts = JSON.parse(exp.participants);
+            } catch (_) {
+                parts = [];
+            }
+        }
+        parts.forEach(p => {
+            if (!p) return;
+            const participantKey = Array.from(balanceMap.keys()).find(k => String(k) === String(p.memberId));
+            if (participantKey) {
+                const participantBal = balanceMap.get(participantKey);
+                participantBal.totalOwed += (Number(p.shareAmount) || 0);
             }
         });
     });
 
     // Process settlements
-    settlements.forEach(set => {
-        // paidBy paid someone, so they technically "paid" an expense equivalent
-        if (balanceMap.has(set.paidBy)) {
-            balanceMap.get(set.paidBy).totalPaid += set.amount;
+    (settlements || []).forEach(set => {
+        if (!set) return;
+        const payerKey = Array.from(balanceMap.keys()).find(k => String(k) === String(set.paidBy));
+        if (payerKey) {
+            balanceMap.get(payerKey).totalPaid += (Number(set.amount) || 0);
         }
-        // paidTo received money, so it increases their "owed" or decreases their net balance
-        if (balanceMap.has(set.paidTo)) {
-            balanceMap.get(set.paidTo).totalOwed += set.amount;
+        const payeeKey = Array.from(balanceMap.keys()).find(k => String(k) === String(set.paidTo));
+        if (payeeKey) {
+            balanceMap.get(payeeKey).totalOwed += (Number(set.amount) || 0);
         }
     });
 
