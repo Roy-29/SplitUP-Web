@@ -231,10 +231,10 @@ export default function AnalyticsView({
     if (weekendPct >= 45 && totalSpent > 500) {
       insights.push({
         id: 'weekend_surge',
-        type: 'accent',
+        type: 'trend',
         icon: 'ph-calendar-check',
-        iconBg: 'rgba(253, 203, 110, 0.2)',
-        iconColor: '#fdcb6e',
+        iconBg: 'rgba(225, 112, 85, 0.18)',
+        iconColor: '#e17055',
         title: `Weekend Spending Surge (${weekendPct.toFixed(0)}%)`,
         description: `Almost half your expenses occur on weekends (${formatAmt(weekendTotal)}). Planning leisure activities and groceries ahead can help curb impulsive spikes.`
       });
@@ -463,7 +463,7 @@ export default function AnalyticsView({
               <i className={`ph ${topCategory?.icon || 'ph-tag'}`}></i>
             </div>
           </div>
-          <div className="kpi-value" style={{ fontSize: '1.45rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className="kpi-value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {topCategory ? topCategory.name : 'N/A'}
           </div>
           <div className="kpi-meta">
@@ -483,7 +483,7 @@ export default function AnalyticsView({
               <i className="ph ph-trend-up"></i>
             </div>
           </div>
-          <div className="kpi-value" style={{ color: '#e84393' }}>
+          <div className="kpi-value">
             {largestExpense ? formatAmt(largestExpense.amount) : '0.00'}
           </div>
           <div className="kpi-meta">
@@ -691,7 +691,7 @@ export default function AnalyticsView({
                     <div className="insight-icon" style={{ backgroundColor: item.iconBg, color: item.iconColor }}>
                       <i className={`ph ${item.icon}`}></i>
                     </div>
-                    <span className="insight-type-tag">{item.type.toUpperCase()}</span>
+                    <span className={`insight-type-tag ${item.type}`}>{item.type.toUpperCase()}</span>
                   </div>
                   <h4 className="insight-title">{item.title}</h4>
                   <p className="insight-desc">{item.description}</p>
