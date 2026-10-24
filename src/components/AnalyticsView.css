@@ -683,18 +683,6 @@
   background: var(--bg-surface, rgba(18, 24, 38, 0.75));
   backdrop-filter: blur(14px);
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  position: relative;
-  overflow: hidden;
-}
-
-.smart-advisor-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #6c5ce7, #00bfa5, #fdcb6e, #e84393);
 }
 
 .advisor-header {
@@ -760,55 +748,23 @@
 }
 
 .advisor-insight-card {
-  position: relative;
-  padding: 22px 24px;
+  padding: 20px 22px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-surface, rgba(18, 24, 38, 0.7));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.07));
+  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 12px;
-  transition: all 0.25s ease;
-  overflow: hidden;
-}
-
-/* Elegant top accent bar for every card */
-.advisor-insight-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-}
-
-.advisor-insight-card.danger::before {
-  background: linear-gradient(90deg, #d63031, rgba(214, 48, 49, 0.2));
-}
-
-.advisor-insight-card.warning::before {
-  background: linear-gradient(90deg, #fdcb6e, rgba(253, 203, 110, 0.2));
-}
-
-.advisor-insight-card.info::before {
-  background: linear-gradient(90deg, #6c5ce7, rgba(108, 92, 231, 0.2));
-}
-
-.advisor-insight-card.trend::before,
-.advisor-insight-card.accent::before {
-  background: linear-gradient(90deg, #e17055, rgba(225, 112, 85, 0.2));
-}
-
-.advisor-insight-card.tip::before {
-  background: linear-gradient(90deg, #00bfa5, rgba(0, 191, 165, 0.2));
+  transition: transform 0.25s ease, border-color 0.25s ease;
 }
 
 .advisor-insight-card:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px);
+  border-color: rgba(108, 92, 231, 0.3);
 }
 
 .insight-card-top {
