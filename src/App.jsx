@@ -439,7 +439,7 @@ function App() {
     return formatCompact(amount, currencyCode);
   }
 
-  const { currentUser, myBalance, expenses, personalExpenses, myDebts, activities, groups, totalOwed, totalToReceive } = data;
+  const { currentUser, myBalance, expenses, personalExpenses, personalTopics, members, settlements, myDebts, activities, groups, totalOwed, totalToReceive } = data;
   const currentActiveGroupId = groups.length > 0 ? groups[0].id : '1';
 
   const handleDeleteExpense = async (expenseId) => {
@@ -1200,8 +1200,16 @@ function App() {
           } />
           <Route path="/analytics" element={
             <AnalyticsView 
-              expenses={expenses} 
-              currentUser={currentUser} 
+              expenses={expenses}
+              personalExpenses={personalExpenses}
+              personalTopics={personalTopics}
+              groups={data.groups || []}
+              members={data.members || []}
+              settlements={data.settlements || []}
+              currentUser={currentUser}
+              currencyCode={currencyCode}
+              formatCurrency={formatCurrency}
+              onNewExpenseClick={() => openExpenseModal('PERSONAL')}
             />
           } />
           <Route path="/settings" element={
