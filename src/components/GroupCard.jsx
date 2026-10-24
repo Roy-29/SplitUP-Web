@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { formatSimple } from '../lib/CurrencyManager';
 import { useConfirm } from './ConfirmModal';
 
@@ -23,8 +23,17 @@ export function avatarColorForName(name) {
 
 export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, currencyCode = 'BDT' }) {
   const { confirm } = useConfirm();
+  const [copiedCode, setCopiedCode] = useState(false);
   const avatarColor = useMemo(() => avatarColorForName(group.name), [group.name]);
   const initial = group.name ? group.name.charAt(0).toUpperCase() : '?';
+
+  const handleCopyCode = (e) => {
+    e.stopPropagation();
+    if (!group.joinCode) return;
+    navigator.clipboard.writeText(group.joinCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
 
   const handleDelete = async (e) => {
     e.stopPropagation();
@@ -96,16 +105,13 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{group.expenseCount || 0} items</span>
           {group.joinCode && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(group.joinCode);
-                  alert(`Join code "${group.joinCode}" copied to clipboard! Share it with friends to invite them.`);
-                }}
+              <button
+                type="button"
+                onClick={handleCopyCode}
                 style={{
-                  background: 'rgba(108, 92, 231, 0.15)',
-                  border: '1px solid rgba(108, 92, 231, 0.3)',
-                  color: 'var(--accent-secondary)',
+                  background: copiedCode ? 'rgba(0, 184, 148, 0.2)' : 'rgba(108, 92, 231, 0.15)',
+                  border: copiedCode ? '1px solid rgba(0, 184, 148, 0.4)' : '1px solid rgba(108, 92, 231, 0.3)',
+                  color: copiedCode ? 'var(--accent-green, #00b894)' : 'var(--accent-secondary)',
                   padding: '3px 8px',
                   borderRadius: '6px',
                   fontSize: '0.73rem',
@@ -113,12 +119,14 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
                   fontWeight: 600,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  userSelect: 'none'
                 }}
                 title="Click to copy join code"
               >
-                <i className="ph ph-copy"></i> Code: {group.joinCode}
-              </span>
+                <i className={copiedCode ? "ph ph-check" : "ph ph-copy"}></i> {copiedCode ? 'Copied!' : `Code: ${group.joinCode}`}
+              </button>
 
               {onShowQr && (
                 <button
