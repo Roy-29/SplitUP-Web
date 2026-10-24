@@ -50,7 +50,7 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
 
     const loadSuggestions = async () => {
       try {
-        const excludeIds = selectedUsers.map(u => u.id);
+        const excludeIds = selectedUsers.flatMap(u => [u.id, u.email, u.username].filter(Boolean));
         if (isTursoConfigured) {
           const suggestions = await tursoGetSuggestedUsers(excludeIds, 6);
           setSuggestedUsers(suggestions);
@@ -82,7 +82,7 @@ export default function NewGroupModal({ isOpen, onClose, onSuccess, currentUser 
     setIsSearching(true);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const excludeIds = selectedUsers.map(u => u.id);
+        const excludeIds = selectedUsers.flatMap(u => [u.id, u.email, u.username].filter(Boolean));
         let results = [];
         if (isTursoConfigured) {
           results = await tursoSearchUsers(trimmed, excludeIds);

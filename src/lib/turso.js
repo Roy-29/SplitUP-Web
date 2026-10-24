@@ -543,9 +543,14 @@ export async function tursoSearchUsers(query, excludeUserIds = []) {
     args: [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]
   });
 
-  const excludeSet = new Set((excludeUserIds || []).map(String));
+  const excludeSet = new Set((excludeUserIds || []).map(item => String(item).toLowerCase().trim()));
   return res.rows
-    .filter(row => !excludeSet.has(String(row.id)))
+    .filter(row => {
+      const id = String(row.id).toLowerCase();
+      const email = String(row.email || '').toLowerCase();
+      const username = String(row.username || '').toLowerCase().replace(/^@/, '');
+      return !excludeSet.has(id) && !excludeSet.has(email) && !excludeSet.has(username);
+    })
     .map(row => ({
       id: String(row.id),
       name: String(row.name),
@@ -564,9 +569,14 @@ export async function tursoGetSuggestedUsers(excludeUserIds = [], limit = 6) {
     sql: `SELECT id, name, email, username, avatar, shortProfile FROM users ORDER BY createdAt DESC LIMIT 20;`,
     args: []
   });
-  const excludeSet = new Set((excludeUserIds || []).map(String));
+  const excludeSet = new Set((excludeUserIds || []).map(item => String(item).toLowerCase().trim()));
   return res.rows
-    .filter(row => !excludeSet.has(String(row.id)))
+    .filter(row => {
+      const id = String(row.id).toLowerCase();
+      const email = String(row.email || '').toLowerCase();
+      const username = String(row.username || '').toLowerCase().replace(/^@/, '');
+      return !excludeSet.has(id) && !excludeSet.has(email) && !excludeSet.has(username);
+    })
     .slice(0, limit)
     .map(row => ({
       id: String(row.id),
@@ -1802,19 +1812,24 @@ export async function tursoDeclineGroupInvitation(requestId, currentUser) {
   return { success: true, groupId, groupName };
 }
 
-export async function tursoCancelGroupRequest(requestId) {
+export async function tursoDeleteGroupRequest(requestId) {
   if (!tursoClient || !requestId) return;
   await initTursoTables();
+  const rid = String(requestId);
   await tursoClient.execute({
-    sql: "UPDATE group_requests SET status = 'CANCELLED' WHERE id = ?;",
-    args: [String(requestId)]
+    sql: "DELETE FROM group_requests WHERE id = ?;",
+    args: [rid]
   });
   try {
     await tursoClient.execute({
-      sql: "UPDATE notifications SET status = 'CANCELLED' WHERE json_extract(data, '$.requestId') = ?;",
-      args: [String(requestId)]
+      sql: "DELETE FROM notifications WHERE json_extract(data, '$.requestId') = ?;",
+      args: [rid]
     });
   } catch (_) {}
+}
+
+export async function tursoCancelGroupRequest(requestId) {
+  return tursoDeleteGroupRequest(requestId);
 }
 
 export async function tursoGetGroupPendingRequests(groupId) {

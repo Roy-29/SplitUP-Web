@@ -12,7 +12,8 @@ import {
   tursoApproveJoinRequest,
   tursoDeclineJoinRequest,
   tursoInviteUserToGroup,
-  tursoCancelGroupRequest 
+  tursoCancelGroupRequest,
+  tursoDeleteGroupRequest 
 } from '../lib/turso';
 import { LocalDatabase } from '../store/db';
 import UserAvatar from './UserAvatar';
@@ -171,30 +172,113 @@ export default function GroupDetailsModal({
   // Registered user search for adding members
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState([]);
+  const [alreadyMembersCount, setAlreadyMembersCount] = useState(0);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const userSearchTimeoutRef = useRef(null);
 
-  // Debounced search for registered users
+  // Helper: check if a searched user is already a member or already invited
+  const isUserAlreadyInGroup = (targetUser) => {
+    if (!targetUser) return true;
+    const targetId = String(targetUser.id || '').trim().toLowerCase();
+    const targetEmail = (targetUser.email || '').trim().toLowerCase();
+    const targetUsername = (targetUser.username || '').trim().toLowerCase().replace(/^@/, '');
+    const targetName = (targetUser.name || '').trim().toLowerCase();
+
+    // 1. Check if user is current user or group creator
+    if (currentUser) {
+      if (targetId && String(currentUser.id).toLowerCase() === targetId) return true;
+      if (targetEmail && currentUser.email && currentUser.email.trim().toLowerCase() === targetEmail) return true;
+      if (targetUsername && currentUser.username && currentUser.username.trim().toLowerCase().replace(/^@/, '') === targetUsername) return true;
+    }
+    if (group?.createdBy) {
+      const creator = String(group.createdBy).trim().toLowerCase();
+      if (targetId && creator === targetId) return true;
+      if (targetName && creator === targetName) return true;
+    }
+
+    // 2. Check if user is already an effective member of this group
+    for (const m of effectiveMembers) {
+      const mUserId = m.userId ? String(m.userId).trim().toLowerCase() : '';
+      const mId = m.id ? String(m.id).trim().toLowerCase() : '';
+      const mEmail = m.email ? m.email.trim().toLowerCase() : '';
+      const mUsername = m.username ? m.username.trim().toLowerCase().replace(/^@/, '') : '';
+      const mName = m.name ? m.name.trim().toLowerCase() : '';
+
+      if (targetId && (mUserId === targetId || mId === targetId)) return true;
+      if (targetEmail && mEmail && mEmail === targetEmail) return true;
+      if (targetUsername && mUsername && mUsername === targetUsername) return true;
+      if (targetName && mName && mName === targetName) return true;
+    }
+
+    // 3. Check if user already has a pending invitation in this group
+    if (pendingRequests?.invitations) {
+      for (const inv of pendingRequests.invitations) {
+        const invUserId = inv.userId ? String(inv.userId).trim().toLowerCase() : '';
+        const invEmail = inv.email ? inv.email.trim().toLowerCase() : '';
+        const invUsername = inv.username ? inv.username.trim().toLowerCase().replace(/^@/, '') : '';
+        const invName = inv.userName ? inv.userName.trim().toLowerCase() : '';
+
+        if (targetId && invUserId === targetId) return true;
+        if (targetEmail && invEmail && invEmail === targetEmail) return true;
+        if (targetUsername && invUsername && invUsername === targetUsername) return true;
+        if (targetName && invName && invName === targetName) return true;
+      }
+    }
+
+    // 4. Check if user already has a pending join request in this group
+    if (pendingRequests?.joinRequests) {
+      for (const req of pendingRequests.joinRequests) {
+        const reqUserId = req.userId ? String(req.userId).trim().toLowerCase() : '';
+        const reqEmail = req.email ? req.email.trim().toLowerCase() : '';
+        const reqUsername = req.username ? req.username.trim().toLowerCase().replace(/^@/, '') : '';
+
+        if (targetId && reqUserId === targetId) return true;
+        if (targetEmail && reqEmail && reqEmail === targetEmail) return true;
+        if (targetUsername && reqUsername && reqUsername === targetUsername) return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Debounced search for registered users with strict exclusion of existing/invited members
   useEffect(() => {
     if (!isOpen || !group) return;
     if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
     const q = userSearchQuery.trim();
     if (!q) {
       setUserSearchResults([]);
+      setAlreadyMembersCount(0);
       setIsSearchingUsers(false);
       return;
     }
     setIsSearchingUsers(true);
     userSearchTimeoutRef.current = setTimeout(async () => {
       try {
-        const existingIds = effectiveMembers.map(m => m.userId || m.id).filter(Boolean);
+        const existingIdentifiers = [
+          ...effectiveMembers.map(m => m.userId),
+          ...effectiveMembers.map(m => m.id),
+          ...effectiveMembers.map(m => m.email),
+          ...effectiveMembers.map(m => m.username),
+          currentUser?.id,
+          currentUser?.email,
+          currentUser?.username,
+          ...(pendingRequests.invitations || []).map(i => i.userId),
+          ...(pendingRequests.invitations || []).map(i => i.email),
+          ...(pendingRequests.invitations || []).map(i => i.username)
+        ].filter(Boolean);
+
         let results = [];
         if (isTursoConfigured) {
-          results = await tursoSearchUsers(q, existingIds);
+          results = await tursoSearchUsers(q, existingIdentifiers);
         } else {
-          results = LocalDatabase.searchUsers(q, existingIds);
+          results = LocalDatabase.searchUsers(q, existingIdentifiers);
         }
-        setUserSearchResults(results);
+
+        // Strictly filter out any user that is already a member or invited
+        const filtered = results.filter(u => !isUserAlreadyInGroup(u));
+        setAlreadyMembersCount(results.length - filtered.length);
+        setUserSearchResults(filtered);
       } catch (err) {
         console.error("Search user error:", err);
       } finally {
@@ -205,7 +289,7 @@ export default function GroupDetailsModal({
     return () => {
       if (userSearchTimeoutRef.current) clearTimeout(userSearchTimeoutRef.current);
     };
-  }, [isOpen, group?.id, userSearchQuery, effectiveMembers]);
+  }, [isOpen, group?.id, userSearchQuery, effectiveMembers, pendingRequests]);
 
   if (!isOpen || !group) return null;
 
@@ -327,9 +411,28 @@ export default function GroupDetailsModal({
     }
   };
 
+  const handleDeleteInvitationModal = async (req) => {
+    const ok = await confirm({
+      title: 'Delete Invitation Request?',
+      message: `Are you sure you want to delete and cancel the invitation sent to ${req.userName || 'this user'}?`,
+      confirmText: 'Delete Request',
+      danger: true
+    });
+    if (!ok) return;
+
+    try {
+      await tursoDeleteGroupRequest(req.id);
+      await loadPendingRequests();
+      setInviteSuccessMsg(`Invitation request to ${req.userName} was deleted.`);
+      setTimeout(() => setInviteSuccessMsg(''), 4000);
+    } catch (err) {
+      alert(err.message || 'Failed to delete invitation request');
+    }
+  };
+
   const handleCancelInvitationModal = async (requestId) => {
     try {
-      await tursoCancelGroupRequest(requestId);
+      await tursoDeleteGroupRequest(requestId);
       await loadPendingRequests();
     } catch (err) {
       alert(err.message || 'Failed to cancel invitation');
@@ -1028,9 +1131,15 @@ export default function GroupDetailsModal({
                           fontSize: '0.82rem'
                         }}>
                           <i className="ph ph-user-circle-dashed" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '4px', opacity: 0.6 }}></i>
-                          <span>No registered user found for "<strong>{userSearchQuery}</strong>".</span>
+                          <span>
+                            {alreadyMembersCount > 0 
+                              ? `The user "${userSearchQuery}" is already a member or has a pending invitation in this group.`
+                              : `No registered user found for "${userSearchQuery}".`}
+                          </span>
                           <div style={{ fontSize: '0.75rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
-                            Every member must have a registered SplitUP account.
+                            {alreadyMembersCount > 0 
+                              ? "Existing group members are hidden from the search results."
+                              : "Every member must have a registered SplitUP account."}
                           </div>
                         </div>
                       ) : (
@@ -1219,19 +1328,27 @@ export default function GroupDetailsModal({
                           </div>
                         </div>
                       </div>
-                      {isGroupCreator && (
-                        <div className="pending-request-actions">
-                          <button
-                            type="button"
-                            className="notif-btn notif-btn-decline"
-                            onClick={() => handleCancelInvitationModal(req.id)}
-                            title="Cancel this invitation"
-                          >
-                            <i className="ph ph-x"></i>
-                            <span>Cancel</span>
-                          </button>
-                        </div>
-                      )}
+                      <div className="pending-request-actions">
+                        <button
+                          type="button"
+                          className="notif-btn notif-btn-decline"
+                          onClick={() => handleDeleteInvitationModal(req)}
+                          title="Delete this invitation request"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <i className="ph ph-trash"></i>
+                          <span>Delete Request</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
