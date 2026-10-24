@@ -580,7 +580,7 @@ export default function SettleUpModal({
               </label>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1.2fr 1fr',
+                gridTemplateColumns: '1fr 1fr',
                 gap: '8px',
                 background: 'var(--bg-tertiary)',
                 padding: '4px',
@@ -606,7 +606,7 @@ export default function SettleUpModal({
                   }}
                 >
                   <i className="ph ph-money" style={{ fontSize: '1rem', color: paymentType === 'CASH' ? 'var(--success)' : 'inherit' }}></i>
-                  <span>💵 Cash (Default)</span>
+                  <span>💵 Cash</span>
                 </button>
                 <button
                   type="button"
