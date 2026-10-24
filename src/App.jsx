@@ -15,6 +15,7 @@ import GroupDetailsModal from './components/GroupDetailsModal'
 import ExpenseDetailsModal from './components/ExpenseDetailsModal'
 import NewTopicModal from './components/NewTopicModal'
 import TopicDetailsModal from './components/TopicDetailsModal'
+import NotificationsModal from './components/NotificationsModal'
 import UserAvatar from './components/UserAvatar'
 import AuthScreen from './components/AuthScreen'
 import { 
@@ -123,6 +124,7 @@ function App() {
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState(null);
   const [selectedTopicForDetails, setSelectedTopicForDetails] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [isActingOnNotif, setIsActingOnNotif] = useState(false);
@@ -1115,11 +1117,12 @@ function App() {
                         className="notification-view-all"
                         onClick={() => {
                           setIsNotificationsOpen(false);
-                          navigate('/expenses');
+                          setIsNotificationsModalOpen(true);
                         }}
+                        title="View all notifications in full modal"
                       >
-                        <span>View All Transactions</span>
-                        <i className="ph ph-arrow-right"></i>
+                        <i className="ph ph-arrows-out-simple"></i>
+                        <span>View All Notifications</span>
                       </button>
                     </div>
                   </div>
@@ -1354,6 +1357,25 @@ function App() {
         onDeleteSettlement={handleDeleteSettlement}
         onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
         onRefreshData={loadData}
+      />
+
+      {/* Full View Notifications Modal */}
+      <NotificationsModal
+        isOpen={isNotificationsModalOpen}
+        onClose={() => setIsNotificationsModalOpen(false)}
+        notifications={notifications}
+        unreadCount={unreadNotifCount}
+        currentUser={currentUser}
+        onMarkAllRead={handleMarkAllRead}
+        onNotificationClick={(notif) => {
+          handleNotificationItemClick(notif);
+          setIsNotificationsModalOpen(false);
+        }}
+        onApproveJoinRequest={handleApproveJoinRequest}
+        onDeclineJoinRequest={handleDeclineJoinRequest}
+        onAcceptInvitation={handleAcceptInvitation}
+        onDeclineInvitation={handleDeclineInvitation}
+        isActingOnNotif={isActingOnNotif}
       />
     </div>
   )
