@@ -5,6 +5,10 @@
   user-select: none;
 }
 
+.custom-select-container.is-open {
+  z-index: 1000;
+}
+
 /* Trigger Button */
 .custom-select-trigger {
   width: 100%;

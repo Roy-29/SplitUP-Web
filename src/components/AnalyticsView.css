@@ -14,6 +14,8 @@
 
 /* 1. Header & Control Panel */
 .analytics-control-panel {
+  position: relative;
+  z-index: 40;
   padding: 24px 28px;
   border-radius: 20px;
   background: var(--bg-surface, rgba(18, 24, 38, 0.75));
@@ -87,6 +89,8 @@
 
 /* Filters & Scope Bar */
 .analytics-filters-bar {
+  position: relative;
+  z-index: 45;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -137,6 +141,8 @@
 }
 
 .analytics-subfilters {
+  position: relative;
+  z-index: 46;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -144,7 +150,23 @@
 }
 
 .subfilter-item {
-  min-width: 170px;
+  position: relative;
+  z-index: 47;
+  min-width: 190px;
+}
+
+.subfilter-item .custom-select-container.is-open {
+  z-index: 100;
+}
+
+.subfilter-item .custom-select-menu {
+  z-index: 9999;
+  min-width: 100%;
+  width: max-content;
+  max-width: 290px;
+  background: #1e293b !important;
+  border: 1px solid rgba(108, 92, 231, 0.45) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(108, 92, 231, 0.25) !important;
 }
 
 .time-range-segmented {
@@ -181,6 +203,8 @@
 
 /* 2. KPI Summary Grid */
 .kpi-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 18px;

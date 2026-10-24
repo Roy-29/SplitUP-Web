@@ -355,8 +355,13 @@ export default function AnalyticsView({
                   value={selectedTopic}
                   onChange={setSelectedTopic}
                   options={[
-                    { value: 'ALL', label: 'All Subjects / Topics', icon: 'ph-folder-simple' },
-                    ...personalTopics.map(t => ({ value: t.name, label: t.name, icon: t.icon || 'ph-folder' }))
+                    { value: 'ALL', label: 'All Subjects', icon: 'ph-folder-simple', sublabel: `${personalTopics.length} topics` },
+                    ...personalTopics.map(t => ({ 
+                      value: t.name, 
+                      label: t.name, 
+                      icon: t.icon || 'ph-folder',
+                      sublabel: t.budget ? formatAmt(t.budget) : undefined
+                    }))
                   ]}
                   placeholder="Filter by Subject"
                 />
@@ -370,8 +375,13 @@ export default function AnalyticsView({
                   value={selectedGroupId}
                   onChange={setSelectedGroupId}
                   options={[
-                    { value: 'ALL', label: 'All Groups', icon: 'ph-users-three' },
-                    ...groups.map(g => ({ value: g.id, label: g.name, icon: 'ph-users' }))
+                    { value: 'ALL', label: 'All Groups', icon: 'ph-users-three', sublabel: `${groups.length} groups` },
+                    ...groups.map(g => ({ 
+                      value: g.id, 
+                      label: g.name, 
+                      icon: 'ph-users',
+                      sublabel: g.memberCount ? `${g.memberCount} members` : undefined
+                    }))
                   ]}
                   placeholder="Filter by Group"
                 />
