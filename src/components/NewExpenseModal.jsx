@@ -780,7 +780,20 @@ export default function NewExpenseModal({
   };
 
   const activeGroupMembers = members.filter(m => String(m.groupId) === String(selectedGroupId));
-  const displayMembers = activeGroupMembers.length > 0 ? activeGroupMembers : (groups.length > 0 ? [] : (currentUser ? [currentUser] : []));
+  const rawMembers = activeGroupMembers.length > 0 ? activeGroupMembers : (groups.length > 0 ? [] : (currentUser ? [currentUser] : []));
+
+  // Logged-in user is ALWAYS first in the list
+  const displayMembers = [...rawMembers].sort((a, b) => {
+    const aIsMe = String(a.userId) === String(currentUser?.id) ||
+                  String(a.id) === String(currentUser?.id) ||
+                  (a.email && currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase());
+    const bIsMe = String(b.userId) === String(currentUser?.id) ||
+                  String(b.id) === String(currentUser?.id) ||
+                  (b.email && currentUser?.email && b.email.toLowerCase() === currentUser.email.toLowerCase());
+    if (aIsMe) return -1;
+    if (bIsMe) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
 
   return createPortal(
     <div className="modal-overlay animate-fade-in" onClick={handleClose}>
@@ -1222,7 +1235,9 @@ export default function NewExpenseModal({
 
                 {displayMembers.map(m => {
                   const isSelected = form.selectedMembers.has(m.id);
-                  const isMe = m.id === currentUser?.id || String(m.userId) === String(currentUser?.id);
+                  const isMe = String(m.userId) === String(currentUser?.id) ||
+                               String(m.id) === String(currentUser?.id) ||
+                               (m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase());
 
                   return (
                     <div key={m.id} className={`member-split-row ${isSelected ? 'selected' : 'unselected'}`}>

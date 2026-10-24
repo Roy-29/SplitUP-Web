@@ -127,11 +127,22 @@ export default function GroupDetailsModal({
     }
   }, [group?.id, group?.name, isOpen]);
 
-  // Filter members, expenses, and settlements for this specific group
+  // Filter members, expenses, and settlements for this specific group (Logged-in user always first)
   const groupMembers = useMemo(() => {
     if (!group) return [];
-    return (members || []).filter(m => String(m.groupId) === String(group.id));
-  }, [members, group?.id]);
+    const list = (members || []).filter(m => String(m.groupId) === String(group.id));
+    return [...list].sort((a, b) => {
+      const aIsMe = String(a.userId) === String(currentUser?.id) ||
+                    String(a.id) === String(currentUser?.id) ||
+                    (a.email && currentUser?.email && a.email.toLowerCase() === currentUser.email.toLowerCase());
+      const bIsMe = String(b.userId) === String(currentUser?.id) ||
+                    String(b.id) === String(currentUser?.id) ||
+                    (b.email && currentUser?.email && b.email.toLowerCase() === currentUser.email.toLowerCase());
+      if (aIsMe) return -1;
+      if (bIsMe) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [members, group?.id, currentUser]);
 
   const effectiveMembers = useMemo(() => {
     if (groupMembers.length > 0) return groupMembers;
