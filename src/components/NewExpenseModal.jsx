@@ -354,23 +354,26 @@ export default function NewExpenseModal({
   const percentData = computePercentAmounts(amountNum, form.selectedMembers, lockedPercentages, form.customPercentages);
   const sharesData = computeSharesAmounts(amountNum, form.selectedMembers, form.customShares);
 
-  // Exact amount change with smart auto-balance and 600 cap protection
+  // Exact amount change with smart auto-balance, 1-click select, and backspace protection
   const handleExactChange = (memberId, rawValue) => {
-    const total = amountNum;
-    
-    // If cleared, unlock this member so they auto-split with remaining
+    // If user cleared the input with Backspace or Delete, KEEP it empty! Do NOT snap back!
     if (rawValue.trim() === '') {
-      setLockedExact(prev => {
-        const next = new Set(prev);
-        next.delete(memberId);
-        return next;
-      });
-      setForm(prev => {
-        const nextAmounts = { ...prev.customAmounts };
-        delete nextAmounts[memberId];
-        return { ...prev, customAmounts: nextAmounts };
-      });
+      setLockedExact(prev => new Set(prev).add(memberId));
+      setForm(prev => ({
+        ...prev,
+        customAmounts: {
+          ...prev.customAmounts,
+          [memberId]: ''
+        }
+      }));
       return;
+    }
+
+    // Keep only numbers and at most one decimal point
+    let clean = rawValue.replace(/[^\d.]/g, '');
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      clean = `${parts[0]}.${parts.slice(1).join('')}`;
     }
 
     // Sum of other locked members
@@ -381,25 +384,41 @@ export default function NewExpenseModal({
       }
     }
 
+    const total = amountNum;
     const maxAllowed = Math.max(0, Number((total - otherLockedSum).toFixed(2)));
-    let valNum = parseFloat(rawValue);
-    if (isNaN(valNum)) valNum = 0;
-    if (valNum < 0) valNum = 0;
-    // Cap at maxAllowed so total never crosses the overall amount
-    if (valNum > maxAllowed) {
-      valNum = maxAllowed;
-    }
+    const valNum = parseFloat(clean);
 
-    const valStr = rawValue.endsWith('.') ? rawValue : String(valNum);
+    let finalStr = clean;
+    // Cap at total so it never crosses the maximum available amount
+    if (!isNaN(valNum) && total > 0 && valNum > maxAllowed) {
+      finalStr = String(maxAllowed);
+    }
 
     setLockedExact(prev => new Set(prev).add(memberId));
     setForm(prev => ({
       ...prev,
       customAmounts: {
         ...prev.customAmounts,
-        [memberId]: valStr
+        [memberId]: finalStr
       }
     }));
+  };
+
+  const handleExactBlur = (memberId) => {
+    // If the input was left completely empty when user leaves, smoothly return to auto-split
+    const val = form.customAmounts[memberId];
+    if (val === undefined || val === null || val.trim() === '') {
+      setLockedExact(prev => {
+        const next = new Set(prev);
+        next.delete(memberId);
+        return next;
+      });
+      setForm(prev => {
+        const nextAmounts = { ...prev.customAmounts };
+        delete nextAmounts[memberId];
+        return { ...prev, customAmounts: nextAmounts };
+      });
+    }
   };
 
   const handleToggleLockExact = (memberId) => {
@@ -432,20 +451,24 @@ export default function NewExpenseModal({
     setForm(prev => ({ ...prev, customAmounts: {} }));
   };
 
-  // Percentage change with smart auto-balance and 100% cap
+  // Percentage change with smart auto-balance, 1-click select, and backspace protection
   const handlePercentChange = (memberId, rawValue) => {
     if (rawValue.trim() === '') {
-      setLockedPercentages(prev => {
-        const next = new Set(prev);
-        next.delete(memberId);
-        return next;
-      });
-      setForm(prev => {
-        const nextPct = { ...prev.customPercentages };
-        delete nextPct[memberId];
-        return { ...prev, customPercentages: nextPct };
-      });
+      setLockedPercentages(prev => new Set(prev).add(memberId));
+      setForm(prev => ({
+        ...prev,
+        customPercentages: {
+          ...prev.customPercentages,
+          [memberId]: ''
+        }
+      }));
       return;
+    }
+
+    let clean = rawValue.replace(/[^\d.]/g, '');
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      clean = `${parts[0]}.${parts.slice(1).join('')}`;
     }
 
     let otherLockedSum = 0;
@@ -456,23 +479,37 @@ export default function NewExpenseModal({
     }
 
     const maxAllowed = Math.max(0, Number((100 - otherLockedSum).toFixed(2)));
-    let valNum = parseFloat(rawValue);
-    if (isNaN(valNum)) valNum = 0;
-    if (valNum < 0) valNum = 0;
-    if (valNum > maxAllowed) {
-      valNum = maxAllowed;
-    }
+    const valNum = parseFloat(clean);
 
-    const valStr = rawValue.endsWith('.') ? rawValue : String(valNum);
+    let finalStr = clean;
+    if (!isNaN(valNum) && valNum > maxAllowed) {
+      finalStr = String(maxAllowed);
+    }
 
     setLockedPercentages(prev => new Set(prev).add(memberId));
     setForm(prev => ({
       ...prev,
       customPercentages: {
         ...prev.customPercentages,
-        [memberId]: valStr
+        [memberId]: finalStr
       }
     }));
+  };
+
+  const handlePercentBlur = (memberId) => {
+    const val = form.customPercentages[memberId];
+    if (val === undefined || val === null || val.trim() === '') {
+      setLockedPercentages(prev => {
+        const next = new Set(prev);
+        next.delete(memberId);
+        return next;
+      });
+      setForm(prev => {
+        const nextPct = { ...prev.customPercentages };
+        delete nextPct[memberId];
+        return { ...prev, customPercentages: nextPct };
+      });
+    }
   };
 
   const handleToggleLockPercent = (memberId) => {
@@ -1213,18 +1250,18 @@ export default function NewExpenseModal({
                         <div className="split-input-wrapper">
                           <span className="split-input-prefix">{currencySymbol}</span>
                           <input 
-                            type="number" 
-                            step="0.01" 
-                            min="0"
-                            placeholder="0.00"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={exactData.amounts[m.id] !== undefined ? exactData.amounts[m.id].toFixed(2) : '0.00'}
                             className="split-custom-input"
                             value={lockedExact.has(m.id) ? (form.customAmounts[m.id] ?? '') : (exactData.amounts[m.id] !== undefined ? exactData.amounts[m.id].toFixed(2) : '')}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={() => handleExactBlur(m.id)}
                             onKeyDown={e => {
                               if (['+', '-', 'e', 'E'].includes(e.key)) {
                                 e.preventDefault();
                               }
                             }}
-                            onWheel={e => e.target.blur()}
                             onChange={(e) => handleExactChange(m.id, e.target.value)}
                           />
                           <button
@@ -1252,19 +1289,18 @@ export default function NewExpenseModal({
                       {form.splitMode === 'PERCENT' && isSelected && (
                         <div className="split-input-wrapper">
                           <input 
-                            type="number" 
-                            step="0.1" 
-                            min="0"
-                            max="100"
-                            placeholder="0"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={percentData.percentages[m.id] !== undefined ? String(percentData.percentages[m.id]) : '0'}
                             className="split-custom-input percent-input"
-                            value={lockedPercentages.has(m.id) ? (form.customPercentages[m.id] ?? '') : (percentData.percentages[m.id] !== undefined ? percentData.percentages[m.id] : '')}
+                            value={lockedPercentages.has(m.id) ? (form.customPercentages[m.id] ?? '') : (percentData.percentages[m.id] !== undefined ? String(percentData.percentages[m.id]) : '')}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={() => handlePercentBlur(m.id)}
                             onKeyDown={e => {
                               if (['+', '-', 'e', 'E'].includes(e.key)) {
                                 e.preventDefault();
                               }
                             }}
-                            onWheel={e => e.target.blur()}
                             onChange={(e) => handlePercentChange(m.id, e.target.value)}
                           />
                           <span className="split-input-suffix">%</span>
