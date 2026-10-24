@@ -126,6 +126,7 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [isActingOnNotif, setIsActingOnNotif] = useState(false);
+  const [copiedUsername, setCopiedUsername] = useState(false);
   const notificationRef = useRef(null);
 
   useEffect(() => {
@@ -799,13 +800,14 @@ function App() {
         <NavLink 
           to="/dashboard" 
           className="brand animate-fade-in" 
-          title="Go to Dashboard"
+          title="SplitUP Dashboard"
         >
           <div className="brand-icon">
             <i className="ph ph-intersect"></i>
           </div>
-          <div>
+          <div className="brand-text-wrapper">
             <h1>SplitUP</h1>
+            <span className="brand-badge">Expense Engine</span>
           </div>
         </NavLink>
 
@@ -823,6 +825,9 @@ function App() {
           >
             <i className="ph ph-users-three"></i>
             <span>Groups</span>
+            {data.groups?.length > 0 && (
+              <span className="nav-item-badge">{data.groups.length}</span>
+            )}
           </NavLink>
           <NavLink 
             to="/expenses" 
@@ -847,24 +852,47 @@ function App() {
           </NavLink>
         </nav>
 
-        <NavLink 
-          to="/settings"
-          className={({ isActive }) => `user-profile animate-fade-in delay-4 ${isActive ? 'active' : ''}`}
-          style={({ isActive }) => ({
-            cursor: 'pointer',
-            outline: isActive ? '2px solid var(--accent-primary)' : 'none'
-          })}
-        >
-          <UserAvatar user={currentUser} size={40} className="avatar" />
-          <div className="user-info" style={{ overflow: 'hidden' }}>
-            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.92rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{currentUser.name}</h4>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--accent-primary, #00bfa5)', fontWeight: 600, fontFamily: 'monospace' }}>
-                @{currentUser.username || currentUser.email?.split('@')[0]}
-              </span>
+        <div className="sidebar-user-box-container animate-fade-in delay-5">
+          <NavLink 
+            to="/settings"
+            className={({ isActive }) => `user-profile ${isActive ? 'active' : ''}`}
+            title="Account & Settings (Click to manage)"
+          >
+            <div className="user-profile-avatar-wrapper">
+              <div className="user-avatar-glow" />
+              <UserAvatar user={currentUser} size={42} showOnline={true} className="avatar" />
             </div>
-          </div>
-        </NavLink>
+
+            <div className="user-info">
+              <div className="user-info-header">
+                <h4 className="user-name" title={currentUser.name}>{currentUser.name}</h4>
+                <span className="user-status-pill">Active</span>
+              </div>
+              <div className="user-handle-row">
+                <button
+                  type="button"
+                  className={`user-handle-badge ${copiedUsername ? 'copied' : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const cleanHandle = (currentUser.username || currentUser.email?.split('@')[0] || 'user').replace(/^@/, '');
+                    navigator.clipboard.writeText(`@${cleanHandle}`);
+                    setCopiedUsername(true);
+                    setTimeout(() => setCopiedUsername(false), 2000);
+                  }}
+                  title={copiedUsername ? "Copied to clipboard!" : "Click to copy username"}
+                >
+                  <i className={`ph ${copiedUsername ? 'ph-check' : 'ph-copy'} copy-icon-hint`}></i>
+                  <span>{copiedUsername ? 'Copied!' : `@${(currentUser.username || currentUser.email?.split('@')[0] || 'user').replace(/^@/, '')}`}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="user-profile-action" title="Settings">
+              <i className="ph ph-gear-six"></i>
+            </div>
+          </NavLink>
+        </div>
       </aside>
 
       {/* Main Content */}
