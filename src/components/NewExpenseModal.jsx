@@ -320,6 +320,33 @@ export default function NewExpenseModal({
     onClose();
   };
 
+  const handleSwitchMode = (newMode) => {
+    if (newMode === expenseType) return;
+    setExpenseType(newMode);
+    // Reset all inputs cleanly so data doesn't bleed between Personal and Group modes
+    const payerId = getPayerMemberId(selectedGroupId);
+    setForm({
+      title: '',
+      amount: '',
+      notes: '',
+      selectedPayerId: payerId,
+      selectedCategory: '',
+      personalCategory: '',
+      customCategoryName: '',
+      topic: initialTopic || '',
+      isNewTopic: false,
+      newTopicName: '',
+      splitMode: 'EQUAL',
+      selectedMembers: new Set(payerId ? [payerId] : []),
+      customAmounts: {},
+      customPercentages: {},
+      customShares: {}
+    });
+    setLockedExact(new Set());
+    setLockedPercentages(new Set());
+    setError('');
+  };
+
   // Real-time split calculations
   const amountNum = Math.max(0, parseFloat(form.amount) || 0);
   const equalData = computeEqualAmounts(amountNum, form.selectedMembers);
@@ -738,7 +765,7 @@ export default function NewExpenseModal({
           <button 
             type="button" 
             className={`toggle-btn ${expenseType === 'PERSONAL' ? 'active' : ''}`}
-            onClick={() => setExpenseType('PERSONAL')}
+            onClick={() => handleSwitchMode('PERSONAL')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <i className="ph ph-user"></i>
@@ -747,7 +774,7 @@ export default function NewExpenseModal({
           <button 
             type="button" 
             className={`toggle-btn ${expenseType === 'GROUP' ? 'active' : ''}`}
-            onClick={() => setExpenseType('GROUP')}
+            onClick={() => handleSwitchMode('GROUP')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <i className="ph ph-users-three"></i>
