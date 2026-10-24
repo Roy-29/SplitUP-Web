@@ -531,7 +531,7 @@ export default function AnalyticsView({
                       cy="120"
                       r={donutRadius}
                       fill="transparent"
-                      stroke="rgba(255, 255, 255, 0.05)"
+                      className="donut-bg-track"
                       strokeWidth="24"
                     />
 
