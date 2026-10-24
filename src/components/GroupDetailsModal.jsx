@@ -315,11 +315,38 @@ export default function GroupDetailsModal({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const handleCopyCode = () => {
-    if (!group.joinCode) return;
-    navigator.clipboard.writeText(group.joinCode);
+  const handleCopyCode = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!group?.joinCode) return;
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+    setTimeout(() => setCopiedCode(false), 2500);
+
+    const code = group.joinCode;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).catch(() => {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        } catch (_) {}
+      });
+    } else {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = code;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch (_) {}
+    }
   };
 
   const handleSaveGroupName = async () => {
@@ -621,9 +648,9 @@ export default function GroupDetailsModal({
                     type="button"
                     onClick={handleCopyCode}
                     style={{
-                      background: 'rgba(108, 92, 231, 0.15)',
-                      border: '1px solid rgba(108, 92, 231, 0.3)',
-                      color: 'var(--accent-secondary)',
+                      background: copiedCode ? 'rgba(0, 184, 148, 0.2)' : 'rgba(108, 92, 231, 0.15)',
+                      border: copiedCode ? '1px solid rgba(0, 184, 148, 0.4)' : '1px solid rgba(108, 92, 231, 0.3)',
+                      color: copiedCode ? 'var(--accent-green, #00b894)' : 'var(--accent-secondary)',
                       padding: '3px 8px',
                       borderRadius: '6px',
                       fontSize: '0.74rem',
@@ -631,7 +658,9 @@ export default function GroupDetailsModal({
                       fontWeight: 600,
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px'
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none'
                     }}
                     title="Click to copy join code"
                   >
@@ -1217,10 +1246,17 @@ export default function GroupDetailsModal({
                         type="button"
                         className="btn-secondary"
                         onClick={handleCopyCode}
-                        style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                        style={{ 
+                          fontSize: '0.72rem', 
+                          padding: '3px 8px',
+                          background: copiedCode ? 'rgba(0, 184, 148, 0.2)' : undefined,
+                          borderColor: copiedCode ? 'rgba(0, 184, 148, 0.4)' : undefined,
+                          color: copiedCode ? 'var(--accent-green, #00b894)' : undefined,
+                          transition: 'all 0.2s ease'
+                        }}
                       >
                         <i className={`ph ${copiedCode ? 'ph-check' : 'ph-copy'}`}></i>
-                        <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                        <span>{copiedCode ? 'Copied!' : 'Copy Code'}</span>
                       </button>
                     )}
                     {onShowQr && (

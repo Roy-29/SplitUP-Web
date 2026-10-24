@@ -29,10 +29,36 @@ export default function GroupCard({ group, onClick, onDeleteGroup, onShowQr, cur
 
   const handleCopyCode = (e) => {
     e.stopPropagation();
-    if (!group.joinCode) return;
-    navigator.clipboard.writeText(group.joinCode);
+    if (!group?.joinCode) return;
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+    setTimeout(() => setCopiedCode(false), 2500);
+
+    const code = group.joinCode;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).catch(() => {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        } catch (_) {}
+      });
+    } else {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = code;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch (_) {}
+    }
   };
 
   const handleDelete = async (e) => {

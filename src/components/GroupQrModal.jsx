@@ -224,7 +224,12 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
                 className="btn-icon"
                 onClick={handleCopyCode}
                 title="Copy code"
-                style={{ width: '28px', height: '28px', color: copiedCode ? 'var(--success)' : 'inherit' }}
+                style={{ 
+                  width: '28px', 
+                  height: '28px', 
+                  color: copiedCode ? 'var(--accent-green, #00b894)' : 'inherit',
+                  transition: 'all 0.2s ease'
+                }}
               >
                 <i className={copiedCode ? "ph ph-check" : "ph ph-copy"}></i>
               </button>
@@ -237,7 +242,18 @@ export default function GroupQrModal({ isOpen, onClose, group }) {
               type="button" 
               className="btn-secondary"
               onClick={handleCopyLink}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.88rem', padding: '8px 12px' }}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                gap: '6px', 
+                fontSize: '0.88rem', 
+                padding: '8px 12px',
+                background: copiedLink ? 'rgba(0, 184, 148, 0.2)' : undefined,
+                borderColor: copiedLink ? 'rgba(0, 184, 148, 0.4)' : undefined,
+                color: copiedLink ? 'var(--accent-green, #00b894)' : undefined,
+                transition: 'all 0.2s ease'
+              }}
             >
               <i className={copiedLink ? "ph ph-check" : "ph ph-link"}></i>
               {copiedLink ? 'Copied!' : 'Copy Link'}
