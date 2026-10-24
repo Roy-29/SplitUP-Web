@@ -937,10 +937,11 @@ function App() {
                   aria-label="Toggle notifications"
                 >
                   <i className="ph ph-bell"></i>
-                  {unreadNotifCount > 0 ? (
-                    <span className="notification-badge-count">{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</span>
-                  ) : (
-                    <span className="notification-dot"></span>
+                  {unreadNotifCount > 0 && (
+                    <span 
+                      className="notification-dot" 
+                      title={`${unreadNotifCount} unread notification${unreadNotifCount > 1 ? 's' : ''}`}
+                    ></span>
                   )}
                 </button>
 
