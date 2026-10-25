@@ -113,6 +113,21 @@ export async function initTursoTables() {
       await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_group_requests_user ON group_requests(userId, status);");
     } catch (_) {}
     try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_expenses_group_date ON expenses(groupId, date DESC);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(userId, isPersonal);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_members_group ON members(groupId);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_members_user ON members(userId);");
+    } catch (_) {}
+    try {
+      await tursoClient.execute("CREATE INDEX IF NOT EXISTS idx_settlements_group ON settlements(groupId, date DESC);");
+    } catch (_) {}
+    try {
       await tursoClient.execute("ALTER TABLE expenses ADD COLUMN userId TEXT;");
     } catch (_) {}
     try {
@@ -266,6 +281,15 @@ export async function generateUniqueUsername(baseSeed, excludeUserId = null) {
   return `user_${Date.now()}`;
 }
 
+export async function hashPassword(password) {
+  if (!password) return '';
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`splitup_salt_v1:${password}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function tursoSignUp(name, email, password, shortProfile = '', username = '') {
   if (!tursoClient) {
     throw new Error("Turso database is not configured. Please add VITE_TURSO_DATABASE_URL and VITE_TURSO_AUTH_TOKEN in your .env file.");
@@ -308,11 +332,12 @@ export async function tursoSignUp(name, email, password, shortProfile = '', user
 
   const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
+  const hashedPassword = await hashPassword(password);
 
   try {
     await tursoClient.execute({
       sql: 'INSERT INTO users (id, name, email, password, shortProfile, username, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);',
-      args: [userId, name.trim(), normalizedEmail, password, shortProfile.trim(), cleanUsername, now]
+      args: [userId, name.trim(), normalizedEmail, hashedPassword, shortProfile.trim(), cleanUsername, now]
     });
   } catch (insertErr) {
     if (insertErr.message?.includes('UNIQUE constraint failed') || insertErr.message?.includes('idx_users_username_unique')) {
@@ -352,8 +377,20 @@ export async function tursoSignIn(emailOrUsername, password) {
   }
 
   const userRow = result.rows[0];
-  if (userRow.password !== password) {
+  const inputHash = await hashPassword(password);
+  const isMatch = (userRow.password === password) || (userRow.password === inputHash);
+  if (!isMatch) {
     throw new Error("Invalid username/email or password.");
+  }
+
+  // Gracefully upgrade legacy plaintext password to secure SHA-256 hash
+  if (userRow.password === password) {
+    try {
+      await tursoClient.execute({
+        sql: 'UPDATE users SET password = ? WHERE id = ?;',
+        args: [inputHash, String(userRow.id)]
+      });
+    } catch (_) {}
   }
 
   let username = userRow.username ? String(userRow.username).replace(/^@/, '') : '';
@@ -481,19 +518,26 @@ export async function tursoCheckUsernameAvailability(rawUsername, currentUserId 
 
 // ----------------- Data Operations -----------------
 
-export async function tursoGetMembers(groupId = null) {
+export async function tursoGetMembers(groupIdOrIds = null) {
   if (!tursoClient) return [];
   await initTursoTables();
 
-  const sql = groupId 
-    ? `SELECT m.*, u.username, u.avatar, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
-       FROM members m 
-       LEFT JOIN users u ON (m.userId = u.id OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(u.email)))
-       WHERE m.groupId = ?;` 
-    : `SELECT m.*, u.username, u.avatar, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
-       FROM members m 
-       LEFT JOIN users u ON (m.userId = u.id OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(u.email)));`;
-  const args = groupId ? [String(groupId)] : [];
+  let sql = `SELECT m.*, u.username, u.avatar, u.bkashNumber, u.nagadNumber, u.rocketNumber, u.primaryMfs 
+             FROM members m 
+             LEFT JOIN users u ON (m.userId = u.id OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(u.email)))`;
+  let args = [];
+
+  if (Array.isArray(groupIdOrIds)) {
+    if (groupIdOrIds.length === 0) return [];
+    const placeholders = groupIdOrIds.map(() => '?').join(', ');
+    sql += ` WHERE m.groupId IN (${placeholders});`;
+    args = groupIdOrIds.map(String);
+  } else if (groupIdOrIds) {
+    sql += ` WHERE m.groupId = ?;`;
+    args = [String(groupIdOrIds)];
+  } else {
+    sql += ';';
+  }
 
   const res = await tursoClient.execute({ sql, args });
   return res.rows.map(row => ({
@@ -739,14 +783,24 @@ export async function tursoUpdateGroup(groupId, { name }) {
   }
 }
 
-export async function tursoGetExpenses(groupId = null) {
+export async function tursoGetExpenses(groupIdOrIds = null) {
   if (!tursoClient) return [];
   await initTursoTables();
 
-  const sql = groupId 
-    ? 'SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId = ? ORDER BY date DESC;' 
-    : "SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId != 'personal' ORDER BY date DESC;";
-  const args = groupId ? [String(groupId)] : [];
+  let sql = "SELECT * FROM expenses WHERE (isPersonal = 0 OR isPersonal IS NULL) AND groupId != 'personal'";
+  let args = [];
+
+  if (Array.isArray(groupIdOrIds)) {
+    if (groupIdOrIds.length === 0) return [];
+    const placeholders = groupIdOrIds.map(() => '?').join(', ');
+    sql += ` AND groupId IN (${placeholders}) ORDER BY date DESC;`;
+    args = groupIdOrIds.map(String);
+  } else if (groupIdOrIds) {
+    sql += ` AND groupId = ? ORDER BY date DESC;`;
+    args = [String(groupIdOrIds)];
+  } else {
+    sql += ` ORDER BY date DESC;`;
+  }
 
   const res = await tursoClient.execute({ sql, args });
   return res.rows.map(row => {
@@ -1115,14 +1169,24 @@ export async function tursoUpdatePersonalTopic(topicId, fields = {}) {
 
 // ----------------- Settlements Operations -----------------
 
-export async function tursoGetSettlements(groupId = null) {
+export async function tursoGetSettlements(groupIdOrIds = null) {
   if (!tursoClient) return [];
   await initTursoTables();
 
-  const sql = groupId 
-    ? 'SELECT * FROM settlements WHERE groupId = ? ORDER BY date DESC;' 
-    : 'SELECT * FROM settlements ORDER BY date DESC;';
-  const args = groupId ? [String(groupId)] : [];
+  let sql = 'SELECT * FROM settlements';
+  let args = [];
+
+  if (Array.isArray(groupIdOrIds)) {
+    if (groupIdOrIds.length === 0) return [];
+    const placeholders = groupIdOrIds.map(() => '?').join(', ');
+    sql += ` WHERE groupId IN (${placeholders}) ORDER BY date DESC;`;
+    args = groupIdOrIds.map(String);
+  } else if (groupIdOrIds) {
+    sql += ` WHERE groupId = ? ORDER BY date DESC;`;
+    args = [String(groupIdOrIds)];
+  } else {
+    sql += ` ORDER BY date DESC;`;
+  }
 
   const res = await tursoClient.execute({ sql, args });
   return res.rows.map(row => ({

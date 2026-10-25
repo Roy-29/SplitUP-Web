@@ -1,23 +1,27 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { LocalDatabase } from './store/db'
 import { calculateBalances, simplifyDebts, getTotalGroupBalance, getUserBalance, isUserInvolved, matchesMember } from './lib/BalanceCalculator'
 import DashboardView from './components/DashboardView'
-import NewExpenseModal from './components/NewExpenseModal'
-import SettleUpModal from './components/SettleUpModal'
-import GroupsView from './components/GroupsView'
-import ExpensesView from './components/ExpensesView'
-import AnalyticsView from './components/AnalyticsView'
-import SettingsView from './components/SettingsView'
-import NewGroupModal from './components/NewGroupModal'
-import JoinGroupModal from './components/JoinGroupModal'
-import GroupDetailsModal from './components/GroupDetailsModal'
-import ExpenseDetailsModal from './components/ExpenseDetailsModal'
-import NewTopicModal from './components/NewTopicModal'
-import TopicDetailsModal from './components/TopicDetailsModal'
-import NotificationsModal from './components/NotificationsModal'
 import UserAvatar from './components/UserAvatar'
-import AuthScreen from './components/AuthScreen'
+
+// Lazy loaded views for optimal bundle splitting and fast initial paint
+const GroupsView = lazy(() => import('./components/GroupsView'))
+const ExpensesView = lazy(() => import('./components/ExpensesView'))
+const AnalyticsView = lazy(() => import('./components/AnalyticsView'))
+const SettingsView = lazy(() => import('./components/SettingsView'))
+const AuthScreen = lazy(() => import('./components/AuthScreen'))
+
+// Lazy loaded modals to keep initial bundle tiny and memory light
+const NewExpenseModal = lazy(() => import('./components/NewExpenseModal'))
+const SettleUpModal = lazy(() => import('./components/SettleUpModal'))
+const NewGroupModal = lazy(() => import('./components/NewGroupModal'))
+const JoinGroupModal = lazy(() => import('./components/JoinGroupModal'))
+const GroupDetailsModal = lazy(() => import('./components/GroupDetailsModal'))
+const ExpenseDetailsModal = lazy(() => import('./components/ExpenseDetailsModal'))
+const NewTopicModal = lazy(() => import('./components/NewTopicModal'))
+const TopicDetailsModal = lazy(() => import('./components/TopicDetailsModal'))
+const NotificationsModal = lazy(() => import('./components/NotificationsModal'))
 import { 
   isTursoConfigured, 
   tursoGetCurrentUser, 
@@ -229,14 +233,28 @@ function App() {
         await initTursoTables();
         const synced = await tursoSyncCurrentUser(loggedUser.id, loggedUser.email);
         if (synced) loggedUser = synced;
-        const [tMembers, tExpenses, tSettlements, tGroups, tPersonal, tTopics] = await Promise.all([
-          tursoGetMembers(),
-          tursoGetExpenses(),
-          tursoGetSettlements(),
+
+        // Fetch groups, personal expenses and topics in parallel
+        const [tGroups, tPersonal, tTopics] = await Promise.all([
           tursoGetGroups(loggedUser),
           tursoGetPersonalExpenses(loggedUser),
           tursoGetPersonalTopics(loggedUser)
         ]);
+
+        const userGroupIds = (tGroups || []).map(g => String(g.id));
+
+        // Strictly fetch members, expenses, settlements ONLY for user's groups
+        let tMembers = [];
+        let tExpenses = [];
+        let tSettlements = [];
+
+        if (userGroupIds.length > 0) {
+          [tMembers, tExpenses, tSettlements] = await Promise.all([
+            tursoGetMembers(userGroupIds),
+            tursoGetExpenses(userGroupIds),
+            tursoGetSettlements(userGroupIds)
+          ]);
+        }
 
         mockGroups = (tGroups || []).map(g => ({
           id: g.id,
@@ -249,12 +267,9 @@ function App() {
           lastExpenseDate: (tExpenses || []).filter(e => String(e.groupId) === String(g.id)).map(e => e.date).sort((a,b)=>b-a)[0] || g.createdAt
         }));
 
-        const userGroupIds = new Set(mockGroups.map(g => String(g.id)));
-
-        // Strictly isolate members, expenses, and settlements to the user's actual groups
-        members = (tMembers || []).filter(m => userGroupIds.has(String(m.groupId)));
-        expenses = (tExpenses || []).filter(e => userGroupIds.has(String(e.groupId)));
-        settlements = (tSettlements || []).filter(s => userGroupIds.has(String(s.groupId)));
+        members = tMembers || [];
+        expenses = tExpenses || [];
+        settlements = tSettlements || [];
         personalExpenses = tPersonal || [];
         personalTopics = tTopics || [];
       } catch (error) {
@@ -408,24 +423,32 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <Routes>
-        <Route path="/login" element={
-          <AuthScreen 
-            onLoginSuccess={() => {
-              setIsAuthenticated(true);
-              loadData();
-              const pending = sessionStorage.getItem('pending_join_code');
-              if (pending) {
-                sessionStorage.removeItem('pending_join_code');
-                navigate(`/join/${pending}`, { replace: true });
-              } else {
-                navigate('/dashboard');
-              }
-            }}
-          />
-        } />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <Suspense fallback={
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+          <div style={{ color: 'var(--accent-primary)', fontSize: '2rem' }}>
+            <i className="ph ph-spinner ph-spin"></i>
+          </div>
+        </div>
+      }>
+        <Routes>
+          <Route path="/login" element={
+            <AuthScreen 
+              onLoginSuccess={() => {
+                setIsAuthenticated(true);
+                loadData();
+                const pending = sessionStorage.getItem('pending_join_code');
+                if (pending) {
+                  sessionStorage.removeItem('pending_join_code');
+                  navigate(`/join/${pending}`, { replace: true });
+                } else {
+                  navigate('/dashboard');
+                }
+              }}
+            />
+          } />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -1249,143 +1272,162 @@ function App() {
         </Routes>
       </main>
 
-      {/* New Expense Modal */}
-      <NewExpenseModal 
-        isOpen={isExpenseModalOpen}
-        initialMode={expenseModalMode}
-        currentGroupId={expenseModalGroupId || currentActiveGroupId}
-        initialTopic={expenseModalTopic}
-        onClose={() => {
-          setIsExpenseModalOpen(false);
-          setExpenseModalGroupId(null);
-          setExpenseModalTopic('');
-        }}
-        onSuccess={loadData}
-        currentUser={currentUser}
-        groups={groups}
-        members={data.members}
-        personalTopics={data.personalTopics}
-      />
+      {/* Conditionally rendered modals for zero DOM bloat */}
+      <Suspense fallback={null}>
+        {/* New Expense Modal */}
+        {isExpenseModalOpen && (
+          <NewExpenseModal 
+            isOpen={isExpenseModalOpen}
+            initialMode={expenseModalMode}
+            currentGroupId={expenseModalGroupId || currentActiveGroupId}
+            initialTopic={expenseModalTopic}
+            onClose={() => {
+              setIsExpenseModalOpen(false);
+              setExpenseModalGroupId(null);
+              setExpenseModalTopic('');
+            }}
+            onSuccess={loadData}
+            currentUser={currentUser}
+            groups={groups}
+            members={data.members}
+            personalTopics={data.personalTopics}
+          />
+        )}
 
-      {/* Settle Up Modal */}
-      <SettleUpModal 
-        isOpen={isSettleModalOpen}
-        onClose={() => {
-          setIsSettleModalOpen(false);
-          setSettleModalGroupId(null);
-          setSettleModalTarget(null);
-        }}
-        onSuccess={loadData}
-        currentGroupId={settleModalGroupId || currentActiveGroupId}
-        currentUser={currentUser}
-        suggestedDebts={myDebts}
-        groups={groups}
-        currencyCode={currencyCode}
-        members={data.members}
-        initialTarget={settleModalTarget}
-      />
+        {/* Settle Up Modal */}
+        {isSettleModalOpen && (
+          <SettleUpModal 
+            isOpen={isSettleModalOpen}
+            onClose={() => {
+              setIsSettleModalOpen(false);
+              setSettleModalGroupId(null);
+              setSettleModalTarget(null);
+            }}
+            onSuccess={loadData}
+            currentGroupId={settleModalGroupId || currentActiveGroupId}
+            currentUser={currentUser}
+            suggestedDebts={myDebts}
+            groups={groups}
+            currencyCode={currencyCode}
+            members={data.members}
+            initialTarget={settleModalTarget}
+          />
+        )}
 
-      {/* New Group Modal */}
-      <NewGroupModal
-        isOpen={isNewGroupModalOpen}
-        onClose={() => setIsNewGroupModalOpen(false)}
-        onSuccess={loadData}
-        currentUser={currentUser}
-      />
+        {/* New Group Modal */}
+        {isNewGroupModalOpen && (
+          <NewGroupModal
+            isOpen={isNewGroupModalOpen}
+            onClose={() => setIsNewGroupModalOpen(false)}
+            onSuccess={loadData}
+            currentUser={currentUser}
+          />
+        )}
 
-      {/* Expense / Settlement Details Modal */}
-      <ExpenseDetailsModal
-        isOpen={!!selectedExpenseForDetails}
-        onClose={() => setSelectedExpenseForDetails(null)}
-        expense={selectedExpenseForDetails}
-        currentUser={currentUser}
-        currencyCode={currencyCode}
-        personalTopics={data.personalTopics}
-        members={data.members}
-        onDeleteExpense={handleDeleteExpense}
-        onDeleteSettlement={handleDeleteSettlement}
-        onUpdateExpense={handleUpdateExpense}
-        onUpdateSettlement={handleUpdateSettlement}
-        onFilterTopic={(topicName) => {
-          setSelectedExpenseForDetails(null);
-          const found = (data.personalTopics || []).find(t => t.name.toLowerCase() === topicName.toLowerCase());
-          if (found) {
-            setSelectedTopicForDetails(found);
-          }
-        }}
-      />
+        {/* Expense / Settlement Details Modal */}
+        {selectedExpenseForDetails && (
+          <ExpenseDetailsModal
+            isOpen={!!selectedExpenseForDetails}
+            onClose={() => setSelectedExpenseForDetails(null)}
+            expense={selectedExpenseForDetails}
+            currentUser={currentUser}
+            currencyCode={currencyCode}
+            personalTopics={data.personalTopics}
+            members={data.members}
+            onDeleteExpense={handleDeleteExpense}
+            onDeleteSettlement={handleDeleteSettlement}
+            onUpdateExpense={handleUpdateExpense}
+            onUpdateSettlement={handleUpdateSettlement}
+            onFilterTopic={(topicName) => {
+              setSelectedExpenseForDetails(null);
+              const found = (data.personalTopics || []).find(t => t.name.toLowerCase() === topicName.toLowerCase());
+              if (found) {
+                setSelectedTopicForDetails(found);
+              }
+            }}
+          />
+        )}
 
-      {/* New Subject / Topic Modal */}
-      <NewTopicModal
-        isOpen={isNewTopicModalOpen}
-        onClose={() => setIsNewTopicModalOpen(false)}
-        onSuccess={loadData}
-        currentUser={currentUser}
-        currencyCode={currencyCode}
-      />
+        {/* New Subject / Topic Modal */}
+        {isNewTopicModalOpen && (
+          <NewTopicModal
+            isOpen={isNewTopicModalOpen}
+            onClose={() => setIsNewTopicModalOpen(false)}
+            onSuccess={loadData}
+            currentUser={currentUser}
+            currencyCode={currencyCode}
+          />
+        )}
 
-      {/* Topic / Subject Details Modal */}
-      <TopicDetailsModal
-        isOpen={!!selectedTopicForDetails}
-        onClose={() => setSelectedTopicForDetails(null)}
-        topic={selectedTopicForDetails}
-        expenses={data.personalExpenses}
-        currencyCode={currencyCode}
-        onAddExpense={(topicName) => openExpenseModal('PERSONAL', null, topicName)}
-        onDeleteTopic={handleDeleteTopic}
-        onDeleteExpense={handleDeleteExpense}
-        onUpdateTopic={handleUpdateTopic}
-        onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
-      />
+        {/* Topic / Subject Details Modal */}
+        {selectedTopicForDetails && (
+          <TopicDetailsModal
+            isOpen={!!selectedTopicForDetails}
+            onClose={() => setSelectedTopicForDetails(null)}
+            topic={selectedTopicForDetails}
+            expenses={data.personalExpenses}
+            currencyCode={currencyCode}
+            onAddExpense={(topicName) => openExpenseModal('PERSONAL', null, topicName)}
+            onDeleteTopic={handleDeleteTopic}
+            onDeleteExpense={handleDeleteExpense}
+            onUpdateTopic={handleUpdateTopic}
+            onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
+          />
+        )}
 
-      {/* Group Details Modal */}
-      <GroupDetailsModal
-        isOpen={!!selectedGroupForDetails}
-        onClose={() => setSelectedGroupForDetails(null)}
-        group={selectedGroupForDetails}
-        currentUser={currentUser}
-        members={data.members}
-        expenses={data.expenses}
-        settlements={data.settlements}
-        currencyCode={currencyCode}
-        onAddExpense={(mode, grpId) => {
-          setSelectedGroupForDetails(null);
-          openExpenseModal(mode, grpId);
-        }}
-        onSettleUp={(grpId) => {
-          setSelectedGroupForDetails(null);
-          openSettleModal(grpId);
-        }}
-        onShowQr={() => {}}
-        onDeleteGroup={handleDeleteGroup}
-        onUpdateGroup={handleUpdateGroup}
-        onAddMember={handleAddMember}
-        onUpdateMember={handleUpdateMember}
-        onDeleteMember={handleDeleteMember}
-        onDeleteExpense={handleDeleteExpense}
-        onDeleteSettlement={handleDeleteSettlement}
-        onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
-        onRefreshData={loadData}
-      />
+        {/* Group Details Modal */}
+        {selectedGroupForDetails && (
+          <GroupDetailsModal
+            isOpen={!!selectedGroupForDetails}
+            onClose={() => setSelectedGroupForDetails(null)}
+            group={selectedGroupForDetails}
+            currentUser={currentUser}
+            members={data.members}
+            expenses={data.expenses}
+            settlements={data.settlements}
+            currencyCode={currencyCode}
+            onAddExpense={(mode, grpId) => {
+              setSelectedGroupForDetails(null);
+              openExpenseModal(mode, grpId);
+            }}
+            onSettleUp={(grpId) => {
+              setSelectedGroupForDetails(null);
+              openSettleModal(grpId);
+            }}
+            onShowQr={() => {}}
+            onDeleteGroup={handleDeleteGroup}
+            onUpdateGroup={handleUpdateGroup}
+            onAddMember={handleAddMember}
+            onUpdateMember={handleUpdateMember}
+            onDeleteMember={handleDeleteMember}
+            onDeleteExpense={handleDeleteExpense}
+            onDeleteSettlement={handleDeleteSettlement}
+            onSelectExpense={(item) => setSelectedExpenseForDetails(item)}
+            onRefreshData={loadData}
+          />
+        )}
 
-      {/* Full View Notifications Modal */}
-      <NotificationsModal
-        isOpen={isNotificationsModalOpen}
-        onClose={() => setIsNotificationsModalOpen(false)}
-        notifications={notifications}
-        unreadCount={unreadNotifCount}
-        currentUser={currentUser}
-        onMarkAllRead={handleMarkAllRead}
-        onNotificationClick={(notif) => {
-          handleNotificationItemClick(notif);
-          setIsNotificationsModalOpen(false);
-        }}
-        onApproveJoinRequest={handleApproveJoinRequest}
-        onDeclineJoinRequest={handleDeclineJoinRequest}
-        onAcceptInvitation={handleAcceptInvitation}
-        onDeclineInvitation={handleDeclineInvitation}
-        isActingOnNotif={isActingOnNotif}
-      />
+        {/* Full View Notifications Modal */}
+        {isNotificationsModalOpen && (
+          <NotificationsModal
+            isOpen={isNotificationsModalOpen}
+            onClose={() => setIsNotificationsModalOpen(false)}
+            notifications={notifications}
+            unreadCount={unreadNotifCount}
+            currentUser={currentUser}
+            onMarkAllRead={handleMarkAllRead}
+            onNotificationClick={(notif) => {
+              handleNotificationItemClick(notif);
+              setIsNotificationsModalOpen(false);
+            }}
+            onApproveJoinRequest={handleApproveJoinRequest}
+            onDeclineJoinRequest={handleDeclineJoinRequest}
+            onAcceptInvitation={handleAcceptInvitation}
+            onDeclineInvitation={handleDeclineInvitation}
+            isActingOnNotif={isActingOnNotif}
+          />
+        )}
+      </Suspense>
     </div>
   )
 }

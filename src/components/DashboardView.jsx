@@ -20,16 +20,29 @@ export default function DashboardView({
 }) {
   const navigate = useNavigate();
 
-  const totalOwedToMe = myDebts
-    .filter(d => isCreditor(d, currentUser, members))
-    .reduce((sum, d) => sum + d.amount, 0);
+  const { totalOwedToMe, totalIOwe, pendingPaymentsCount, pendingCollectionsCount } = React.useMemo(() => {
+    let owedToMe = 0;
+    let iOwe = 0;
+    let pendingPayments = 0;
+    let pendingCollections = 0;
 
-  const totalIOwe = myDebts
-    .filter(d => isDebtor(d, currentUser, members))
-    .reduce((sum, d) => sum + d.amount, 0);
-
-  const pendingPaymentsCount = myDebts.filter(d => isDebtor(d, currentUser, members)).length;
-  const pendingCollectionsCount = myDebts.filter(d => isCreditor(d, currentUser, members)).length;
+    for (const d of myDebts) {
+      if (isCreditor(d, currentUser, members)) {
+        owedToMe += d.amount;
+        pendingCollections++;
+      }
+      if (isDebtor(d, currentUser, members)) {
+        iOwe += d.amount;
+        pendingPayments++;
+      }
+    }
+    return {
+      totalOwedToMe: owedToMe,
+      totalIOwe: iOwe,
+      pendingPaymentsCount: pendingPayments,
+      pendingCollectionsCount: pendingCollections
+    };
+  }, [myDebts, currentUser, members]);
 
   return (
     <>

@@ -4,4 +4,23 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/@libsql/client')) {
+            return 'vendor-turso';
+          }
+          if (id.includes('node_modules/qrcode.react') || id.includes('node_modules/html5-qrcode')) {
+            return 'vendor-qr';
+          }
+        }
+      }
+    },
+    chunkSizeWarningLimit: 700
+  }
 })

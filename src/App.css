@@ -19,10 +19,9 @@
   gap: 28px;
   border-right: 1px solid var(--glass-border);
   background: var(--bg-secondary);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
   z-index: 100;
-  box-shadow: 1px 0 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 1px 0 24px rgba(0, 0, 0, 0.12);
+  transform: translateZ(0);
 }
 
 .sidebar::-webkit-scrollbar {
