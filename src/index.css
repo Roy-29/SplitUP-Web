@@ -92,6 +92,12 @@
   padding: 0;
   box-sizing: border-box;
   font-family: 'Outfit', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -100,6 +106,9 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none;
 }
 
 body::before {
@@ -122,12 +131,16 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
+button, a, input, select {
+  font-family: inherit;
+  outline: none;
+  touch-action: manipulation;
+}
+
 button {
   border: none;
   background: none;
   cursor: pointer;
-  font-family: inherit;
-  outline: none;
 }
 
 ul {

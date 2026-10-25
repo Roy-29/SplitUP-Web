@@ -1187,10 +1187,9 @@
     background: var(--bg-secondary);
     border-right: none;
     border-top: 1px solid var(--glass-border);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
     z-index: 999;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+    transform: translateZ(0);
   }
   
   .brand, .user-profile, .sidebar-user-box-container {
