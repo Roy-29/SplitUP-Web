@@ -81,6 +81,7 @@
   letter-spacing: -0.5px;
   font-weight: 800;
   line-height: 1.1;
+  color: #ffffff;
   background: linear-gradient(135deg, #ffffff, #dcdde1);
   -webkit-background-clip: text;
   background-clip: text;
@@ -88,6 +89,7 @@
 }
 
 [data-theme='light'] .brand h1 {
+  color: #1e293b;
   background: linear-gradient(135deg, #1e293b, #475569);
   -webkit-background-clip: text;
   background-clip: text;

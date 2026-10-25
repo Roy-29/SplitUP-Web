@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: {
-    target: 'esnext',
+    target: 'es2020',
     rollupOptions: {
       output: {
         manualChunks(id) {
